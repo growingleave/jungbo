@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>유전 로보틱스 미로 - 1단계</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f4f4f6; color: #222; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.2rem; }
+  canvas { width: 100%; max-width: 600px; background: #fff; border: 1px solid #ccc; image-rendering: pixelated; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+  button { padding: 6px 14px; font-size: 1rem; }
+  input { width: 5em; padding: 4px; }
+  pre { background: #fff; border: 1px solid #ccc; padding: 8px; font-size: .85rem; min-height: 4.5em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>1단계: 상하좌우 센서만 있는 신경망 + 유전 알고리즘</h1>
+  <canvas id="cv" width="600" height="600"></canvas>
+  <div class="row">
+    <button id="start">시작</button>
+    <button id="pause">일시정지</button>
+    <button id="reset">초기화</button>
+    <label>시드 <input id="seed" type="number" value="1"></label>
+  </div>
+  <pre id="info"></pre>
+</main>
+
+<script>
+// ---- 설정 (파이썬 stage1.py 와 같은 값) ----
+const CELLS = 7, HIDDEN = 6, STEPS = 100, POP = 100;
+const GENE_LEN = 4 * HIDDEN + HIDDEN + HIDDEN * 4 + 4;
+const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // 상 하 좌 우
+
+// ---- 시드 가능한 난수 ----
+function makeRng(seed) {
+  let a = seed >>> 0;
+  const rnd = () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  rnd.int = n => Math.floor(rnd() * n);
+  rnd.normal = (m = 0, s = 1) =>
+    m + s * Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
+  return rnd;
+}
+
+// ---- 미로 (DFS 로 벽 허물기) ----
+function makeMaze(cells, rnd) {
+  const n = 2 * cells + 1;
+  const grid = Array.from({ length: n }, () => Array(n).fill(1)); // 1 = 벽
+  const seen = new Set(["0,0"]);
+  const stack = [[0, 0]];
+  grid[1][1] = 0;
+  while (stack.length) {
+    const [r, c] = stack[stack.length - 1];
+    const next = DIRS.map(([dr, dc]) => [r + dr, c + dc]).filter(([y, x]) =>
+      y >= 0 && y < cells && x >= 0 && x < cells && !seen.has(y + "," + x));
+    if (!next.length) { stack.pop(); continue; }
+    const [nr, nc] = next[rnd.int(next.length)];
+    grid[r + nr + 1][c + nc + 1] = 0; // 두 칸 사이 벽 허물기
+    grid[2 * nr + 1][2 * nc + 1] = 0;
+    seen.add(nr + "," + nc);
+    stack.push([nr, nc]);
+  }
+  return { grid, n, start: [1, 1], goal: [n - 2, n - 2] };
+}
+
+// ---- 신경망: 입력 4 -> 은닉 6(tanh) -> 출력 4 ----
+function decode(g) {
+  let k = 0;
+  const w1 = g.slice(k, k += 4 * HIDDEN);
+  const b1 = g.slice(k, k += HIDDEN);
+  const w2 = g.slice(k, k += HIDDEN * 4);
+  const b2 = g.slice(k, k += 4);
+  return { w1, b1, w2, b2 };
+}
+
+function run(gene, maze) {
+  const { w1, b1, w2, b2 } = decode(gene);
+  let [r, c] = maze.start;
+  const path = [[r, c]];
+  for (let t = 0; t < STEPS; t++) {
+    const s = DIRS.map(([dr, dc]) => maze.grid[r + dr][c + dc]); // 벽이면 1
+    const h = [];
+    for (let j = 0; j < HIDDEN; j++) {
+      let v = b1[j];
+      for (let i = 0; i < 4; i++) v += s[i] * w1[i * HIDDEN + j];
+      h.push(Math.tanh(v));
+    }
+    let best = 0, bestV = -Infinity;
+    for (let o = 0; o < 4; o++) {
+      let v = b2[o];
+      for (let j = 0; j < HIDDEN; j++) v += h[j] * w2[j * 4 + o];
+      if (v > bestV) { bestV = v; best = o; }
+    }
+    const nr = r + DIRS[best][0], nc = c + DIRS[best][1];
+    if (maze.grid[nr][nc] === 0) { r = nr; c = nc; } // 벽이면 제자리
+    path.push([r, c]);
+  }
+  return path;
+}
+
+// 적합도 = -(마지막 위치와 목표의 직선거리)
+function fitness(gene, maze) {
+  const [r, c] = run(gene, maze).at(-1);
+  return -Math.hypot(r - maze.goal[0], c - maze.goal[1]);
+}
+
+// ---- 유전 알고리즘 ----
+let rnd, maze, pop, gen, timer = null;
+
+function init() {
+  clearInterval(timer); timer = null;
+  rnd = makeRng(Number(document.getElementById("seed").value));
+  maze = makeMaze(CELLS, rnd);
+  pop = Array.from({ length: POP }, () =>
+    Array.from({ length: GENE_LEN }, () => rnd.normal())); // 처음엔 완전 난수
+  gen = 0;
+  draw(null, "초기화됨. [시작]을 누르세요.");
+}
+
+function step() {
+  const scored = pop.map(g => ({ g, f: fitness(g, maze) })).sort((a, b) => b.f - a.f);
+  const mean = scored.reduce((s, x) => s + x.f, 0) / POP;
+  draw(run(scored[0].g, maze),
+    `세대 ${gen}\n최고 적합도 ${scored[0].f.toFixed(2)}\n평균 적합도 ${mean.toFixed(2)}`);
+
+  const parents = scored.slice(0, POP / 5).map(x => x.g); // 상위 20%
+  const next = parents.slice();
+  while (next.length < POP) {
+    const a = parents[rnd.int(parents.length)], b = parents[rnd.int(parents.length)];
+    const cut = 1 + rnd.int(GENE_LEN - 1); // 한 점 교차
+    const child = a.slice(0, cut).concat(b.slice(cut));
+    for (let i = 0; i < GENE_LEN; i++)
+      if (rnd() < 0.05) child[i] += rnd.normal(0, 0.5); // 돌연변이
+    next.push(child);
+  }
+  pop = next;
+  gen++;
+}
+
+// ---- 그리기 ----
+function draw(path, text) {
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const s = cv.width / maze.n;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  for (let r = 0; r < maze.n; r++)
+    for (let c = 0; c < maze.n; c++)
+      if (maze.grid[r][c]) { ctx.fillStyle = "#333"; ctx.fillRect(c * s, r * s, s, s); }
+  const dot = (p, col) => { ctx.fillStyle = col; ctx.fillRect(p[1] * s + 2, p[0] * s + 2, s - 4, s - 4); };
+  dot(maze.start, "#2a9d4a"); dot(maze.goal, "#d6336c");
+  if (path) {
+    ctx.strokeStyle = "rgba(30,100,255,.7)"; ctx.lineWidth = 3; ctx.beginPath();
+    path.forEach(([r, c], i) => {
+      const x = c * s + s / 2, y = r * s + s / 2;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+    const [er, ec] = path.at(-1);
+    ctx.fillStyle = "#1e64ff"; ctx.beginPath();
+    ctx.arc(ec * s + s / 2, er * s + s / 2, s / 3, 0, 7); ctx.fill();
+  }
+  document.getElementById("info").textContent = text;
+}
+
+document.getElementById("start").onclick = () => { if (!timer) timer = setInterval(step, 60); };
+document.getElementById("pause").onclick = () => { clearInterval(timer); timer = null; };
+document.getElementById("reset").onclick = init;
+init();
+</script>
+</body>
+</html>
