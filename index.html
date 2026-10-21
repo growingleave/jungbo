@@ -9,16 +9,16 @@
   :root {
     --bg: #f3f5f8; --fg: #1c2330; --muted: #5d6879; --panel: #ffffff; --line: #d3d9e2;
     --floor: #ffffff; --wall: #2b3445; --start: #2f9e5b; --goal: #d6336c; --path: #2f6bff;
-    --btn: #2f6bff; --btn-fg: #ffffff;
+    --btn: #2f6bff; --btn-fg: #ffffff; --best: #e8590c;
   }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
     --bg: #12161d; --fg: #e4e9f1; --muted: #98a3b5; --panel: #1b212c; --line: #323b4a;
     --floor: #1b212c; --wall: #aab4c6; --start: #4cc27f; --goal: #ff6b9a; --path: #6f9bff;
-    --btn: #6f9bff; --btn-fg: #101520; color-scheme: dark; } }
+    --btn: #6f9bff; --btn-fg: #101520; --best: #ffa94d; color-scheme: dark; } }
   :root[data-theme="dark"] {
     --bg: #12161d; --fg: #e4e9f1; --muted: #98a3b5; --panel: #1b212c; --line: #323b4a;
     --floor: #1b212c; --wall: #aab4c6; --start: #4cc27f; --goal: #ff6b9a; --path: #6f9bff;
-    --btn: #6f9bff; --btn-fg: #101520; color-scheme: dark; }
+    --btn: #6f9bff; --btn-fg: #101520; --best: #ffa94d; color-scheme: dark; }
   body { background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Noto Sans KR", "Malgun Gothic", sans-serif;
     padding-block: 20px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   main { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
@@ -38,13 +38,16 @@
 <body>
 <main>
   <h1>유전 로보틱스 미로 · 1단계</h1>
-  <p class="sub">상하좌우 벽 센서 4개만 가진 신경망을 유전 알고리즘으로 진화시킵니다. 10×10칸 미로에서 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 도착해야 합니다. 파란 선은 그 세대 최고 개체의 경로입니다.</p>
+  <p class="sub">상하좌우 벽 센서 4개만 가진 신경망을 유전 알고리즘으로 진화시킵니다. 10×10칸 미로에서 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 도착해야 합니다. 파란 점은 한 세대 개체 100마리가 동시에 움직이는 모습이고, 주황 점은 그 세대 최고 개체입니다.</p>
   <canvas id="cv" width="600" height="600" aria-label="미로와 최고 개체의 이동 경로"></canvas>
   <div class="row">
     <button id="start" class="primary">시작</button>
     <button id="pause">일시정지</button>
     <button id="reset">초기화</button>
     <label for="seed">시드 <input id="seed" type="number" value="1"></label>
+  </div>
+  <div class="row">
+    <label for="speed" style="margin-left:0">속도 <input id="speed" type="range" min="5" max="300" value="50" style="width:12em"></label>
   </div>
   <pre id="info" aria-live="off"></pre>
 </main>
@@ -151,37 +154,40 @@ function run(gene, maze) {
 }
 
 // 적합도 = -(마지막 위치와 목표의 직선거리)
-function fitness(gene, maze) {
-  const [r, c] = run(gene, maze).at(-1);
+function fitnessOf(path, maze) {
+  const [r, c] = path.at(-1);
   return -Math.hypot(r - maze.goal[0], c - maze.goal[1]);
 }
 
-// ---- 유전 알고리즘 ----
-let rnd, maze, pop, gen, timer = null;
+// ---- 유전 알고리즘 + 실시간 애니메이션 ----
+// 한 세대 = 모든 개체가 동시에 출발해 STEPS 걸음 움직이는 장면 -> 점수 계산 -> 다음 세대 생성
+let rnd, maze, pop, gen, runs, t, acc, holdLeft, running = false, last = 0;
+const speedEl = document.getElementById("speed");
+const stepsPerSec = () => Number(speedEl.value);
 
 function init() {
-  clearInterval(timer); timer = null;
+  running = false;
   rnd = makeRng(Number(document.getElementById("seed").value));
   maze = makeMaze(N, rnd);
   pop = Array.from({ length: POP }, () =>
     Array.from({ length: GENE_LEN }, () => rnd.normal())); // 처음엔 완전 난수
   gen = 0;
-  draw(null, `미로 ${N}x${N}칸, 최단 경로 ${maze.shortest}칸, 걸음 제한 ${STEPS}\n[시작]을 누르세요.`);
+  beginGeneration();
+  t = 0;
+  render();
 }
 
-function step() {
-  const scored = pop.map(g => ({ g, f: fitness(g, maze) })).sort((a, b) => b.f - a.f);
-  const mean = scored.reduce((s, x) => s + x.f, 0) / POP;
-  const bestPath = run(scored[0].g, maze);
-  const [er, ec] = bestPath.at(-1);
-  const arrived = er === maze.goal[0] && ec === maze.goal[1];
-  const solvers = scored.filter(x => x.f === 0).length;
-  draw(bestPath,
-    `세대 ${gen}\n최고 적합도 ${scored[0].f.toFixed(2)}  평균 ${mean.toFixed(2)}\n` +
-    `최고 개체: ${arrived ? "도착 (" + (bestPath.length - 1) + "걸음)" : "도착 못함"}  도착한 개체 ${solvers}/${POP}\n` +
-    `최단 경로 ${maze.shortest}칸`);
+function beginGeneration() {
+  runs = pop.map((g, i) => {
+    const path = run(g, maze);
+    return { i, path, f: fitnessOf(path, maze) };
+  });
+  runs.sort((a, b) => b.f - a.f);                 // runs[0] = 이번 세대 최고 개체
+  t = 0; acc = 0; holdLeft = 0;
+}
 
-  const parents = scored.slice(0, POP / 5).map(x => x.g); // 상위 20%
+function breed() {
+  const parents = runs.slice(0, POP / 5).map(x => pop[x.i]); // 상위 20%
   const next = parents.slice();
   while (next.length < POP) {
     const a = parents[rnd.int(parents.length)], b = parents[rnd.int(parents.length)];
@@ -193,23 +199,35 @@ function step() {
   }
   pop = next;
   gen++;
+  beginGeneration();
+}
+
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (running) {
+    if (t < STEPS) {
+      acc += dt * stepsPerSec();
+      while (acc >= 1 && t < STEPS) { t++; acc -= 1; }
+    } else {
+      holdLeft += dt;                              // 세대가 끝나면 잠깐 멈춰서 결과를 보여준다
+      if (holdLeft > 0.8) breed();
+    }
+    render();
+  }
+  requestAnimationFrame(frame);
 }
 
 // ---- 그리기 (색은 CSS 토큰에서 읽는다) ----
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-let lastPath = null, lastText = "";
-function draw(path, text) {
-  lastPath = path; lastText = text;
+const posAt = (path, k) => path[Math.min(k, path.length - 1)];
+function render() {
   const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   const pad = 24, s = (cv.width - 2 * pad) / maze.n;
   const X = c => pad + c * s, Y = r => pad + r * s;
+  const cx = c => X(c) + s / 2, cy = r => Y(r) + s / 2;
   ctx.fillStyle = css("--floor"); ctx.fillRect(0, 0, cv.width, cv.height);
 
-  // 목표/시작 칸 표시
-  const cellDot = (p, col) => {
-    ctx.fillStyle = col; ctx.beginPath();
-    ctx.arc(X(p[1]) + s / 2, Y(p[0]) + s / 2, s * 0.22, 0, 7); ctx.fill();
-  };
+  const dot = (p, col, rad) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx(p[1]), cy(p[0]), rad, 0, 7); ctx.fill(); };
 
   // 벽: 위/왼쪽 벽은 모든 칸, 아래/오른쪽 벽은 가장자리 칸만 그려 중복을 피한다
   ctx.strokeStyle = css("--wall"); ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.beginPath();
@@ -226,29 +244,39 @@ function draw(path, text) {
     }
   ctx.stroke();
 
-  cellDot(maze.start, css("--start")); cellDot(maze.goal, css("--goal"));
-  if (path) {
-    ctx.strokeStyle = css("--path"); ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.globalAlpha = 0.75; ctx.beginPath();
-    path.forEach(([r, c], i) => {
-      const x = X(c) + s / 2, y = Y(r) + s / 2;
-      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    });
-    ctx.stroke(); ctx.globalAlpha = 1;
-    const [er, ec] = path.at(-1);
-    ctx.fillStyle = css("--path"); ctx.beginPath();
-    ctx.arc(X(ec) + s / 2, Y(er) + s / 2, s * 0.17, 0, 7); ctx.fill();
-  }
-  document.getElementById("info").textContent = text;
-}
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => draw(lastPath, lastText));
-new MutationObserver(() => draw(lastPath, lastText))
-  .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  dot(maze.start, css("--start"), s * 0.22); dot(maze.goal, css("--goal"), s * 0.22);
 
-document.getElementById("start").onclick = () => { if (!timer) timer = setInterval(step, 60); };
-document.getElementById("pause").onclick = () => { clearInterval(timer); timer = null; };
+  // 최고 개체의 지나온 길 (흔적)
+  const best = runs[0].path;
+  ctx.strokeStyle = css("--path"); ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.globalAlpha = 0.45; ctx.beginPath();
+  for (let k = 0; k <= Math.min(t, best.length - 1); k++) {
+    const [r, c] = best[k];
+    k ? ctx.lineTo(cx(c), cy(r)) : ctx.moveTo(cx(c), cy(r));
+  }
+  ctx.stroke(); ctx.globalAlpha = 1;
+
+  // 모든 개체: 못한 개체부터 그려서 최고 개체가 맨 위에 보이게
+  for (let k = runs.length - 1; k >= 1; k--) {
+    ctx.globalAlpha = 0.4; dot(posAt(runs[k].path, t), css("--path"), s * 0.13);
+  }
+  ctx.globalAlpha = 1; dot(posAt(best, t), css("--best"), s * 0.2);
+
+  const mean = runs.reduce((a, x) => a + x.f, 0) / POP;
+  const done = t >= STEPS;
+  const solved = runs.filter(x => x.f === 0).length;
+  document.getElementById("info").textContent =
+    `세대 ${gen}   걸음 ${Math.min(t, STEPS)}/${STEPS}\n` +
+    `최고 적합도 ${runs[0].f.toFixed(2)}  평균 ${mean.toFixed(2)}\n` +
+    `도착한 개체 ${done ? solved : "?"}/${POP} ${done ? "" : "(세대가 끝나면 집계)"}\n` +
+    `미로 ${N}x${N}칸, 최단 경로 ${maze.shortest}칸`;
+}
+
+document.getElementById("start").onclick = () => { running = true; };
+document.getElementById("pause").onclick = () => { running = false; };
 document.getElementById("reset").onclick = init;
 document.getElementById("seed").onchange = init;
 init();
+requestAnimationFrame(frame);
 </script>
 </body>
 </html>
