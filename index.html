@@ -28,39 +28,60 @@
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
   button.primary { background: var(--btn); color: var(--btn-fg); border-color: var(--btn); }
-  button:focus-visible, input:focus-visible { outline: 2px solid var(--path); outline-offset: 2px; }
-  label { color: var(--muted); display: flex; gap: 6px; align-items: center; margin-left: auto; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--path); outline-offset: 2px; }
+  label { color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .right { margin-left: auto; }
   input { font: inherit; width: 5em; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
-  pre { margin: 0; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-    font: .9rem/1.5 ui-monospace, Menlo, Consolas, monospace; min-height: 6.6em; white-space: pre-wrap; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 12em; padding: 0; }
+  pre, textarea { margin: 0; padding: 10px 12px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+    font: .9rem/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; font-variant-numeric: tabular-nums; }
+  pre { min-height: 8.4em; }
+  textarea { width: 100%; box-sizing: border-box; height: 8em; resize: vertical; }
+  .note { margin: 0; font-size: .85rem; color: var(--muted); }
 </style>
 </head>
 <body>
 <main>
-  <h1>유전 로보틱스 미로 · 1단계</h1>
-  <p class="sub">상하좌우 벽 센서 4개만 가진 신경망을 유전 알고리즘으로 진화시킵니다. 10×10칸 미로에서 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 도착해야 합니다. 파란 점은 한 세대 개체 100마리가 동시에 움직이는 모습이고, 주황 점은 그 세대 최고 개체입니다.</p>
-  <canvas id="cv" width="600" height="600" aria-label="미로와 최고 개체의 이동 경로"></canvas>
+  <h1>유전 로보틱스 미로 · 1단계 (연속 이동)</h1>
+  <p class="sub">거리 센서 5개만 가진 지름 8cm 로봇이 두 바퀴로 움직입니다. 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 들어가면 성공입니다. 파란 원은 한 세대 100마리, 주황 원은 그 세대 최고 개체이고 주황 원에서 뻗은 선이 센서입니다.</p>
+  <canvas id="cv" width="600" height="600" aria-label="미로와 로봇들의 실시간 이동"></canvas>
   <div class="row">
     <button id="start" class="primary">시작</button>
     <button id="pause">일시정지</button>
     <button id="reset">초기화</button>
-    <label for="seed">시드 <input id="seed" type="number" value="1"></label>
+    <label for="seed" class="right">시드 <input id="seed" type="number" value="1"></label>
   </div>
   <div class="row">
-    <label for="speed" style="margin-left:0">속도 <input id="speed" type="range" min="5" max="300" value="50" style="width:12em"></label>
+    <label for="speed">속도 <input id="speed" type="range" min="20" max="800" value="200"></label>
+    <button id="export" class="right">최고 개체 가중치 내보내기</button>
   </div>
   <pre id="info" aria-live="off"></pre>
+  <textarea id="exportBox" aria-label="내보낸 가중치" readonly hidden></textarea>
+  <p class="note" id="exportNote" hidden></p>
 </main>
 
 <script>
-// ---- 설정 ----
-const N = 10;                 // 미로 크기 (N x N 칸)
-const HIDDEN = 6, STEPS = 200, POP = 100;
-const GENE_LEN = 4 * HIDDEN + HIDDEN + HIDDEN * 4 + 4;
-const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // 상 하 좌 우
+// ================= 설정 (실제 로봇에 맞게 여기만 바꾸면 된다) =================
+const CFG = {
+  N: 10,                 // 미로 크기 (N x N 칸)
+  CELL: 20,              // 한 칸 크기 cm (= 복도 폭)
+  ROBOT_R: 4,            // 로봇 반지름 cm (지름 8cm)
+  WHEEL_BASE: 8,         // 두 바퀴 사이 거리 cm
+  V_MAX: 30,             // 바퀴 최대 속도 cm/s
+  DT: 0.05,              // 제어 주기 s (20Hz)
+  TIME_LIMIT: 40,        // 한 세대에서 로봇이 움직이는 시간 s
+  SENSOR_DEG: [-90, -45, 0, 45, 90],  // 센서 방향 (로봇 기준, 왼쪽 -> 오른쪽)
+  SENSOR_MAX: 40,        // 센서가 잴 수 있는 최대 거리 cm
+  HIDDEN: 6, POP: 100,
+};
+const STEPS = Math.round(CFG.TIME_LIMIT / CFG.DT);
+const N_IN = CFG.SENSOR_DEG.length, N_OUT = 2;
+const GENE_LEN = N_IN * CFG.HIDDEN + CFG.HIDDEN + CFG.HIDDEN * N_OUT + N_OUT;
+const SENSOR_RAD = CFG.SENSOR_DEG.map(d => d * Math.PI / 180);
+const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // 상 하 좌 우 (미로 생성용)
 const OPP = [1, 0, 3, 2];
 
-// ---- 시드 가능한 난수 ----
+// ================= 시드 가능한 난수 =================
 function makeRng(seed) {
   let a = seed >>> 0;
   const rnd = () => {
@@ -75,7 +96,8 @@ function makeRng(seed) {
   return rnd;
 }
 
-// ---- 미로: 칸마다 상하좌우 벽 여부를 가진다. 크러스컬 방식이라 갈림길과 막다른 길이 많다 ----
+// ================= 미로 =================
+// 칸마다 상하좌우 벽 여부를 가진 완전 미로(크러스컬). 갈림길과 막다른 길이 많다.
 function makeMaze(n, rnd) {
   const walls = Array.from({ length: n }, () => Array.from({ length: n }, () => [1, 1, 1, 1]));
   const parent = Array.from({ length: n * n }, (_, i) => i);
@@ -86,19 +108,20 @@ function makeMaze(n, rnd) {
       if (r + 1 < n) edges.push([r, c, 1]);
       if (c + 1 < n) edges.push([r, c, 3]);
     }
-  for (let i = edges.length - 1; i > 0; i--) {          // 섞기
+  for (let i = edges.length - 1; i > 0; i--) {
     const j = rnd.int(i + 1);
     [edges[i], edges[j]] = [edges[j], edges[i]];
   }
   for (const [r, c, d] of edges) {
     const r2 = r + DIRS[d][0], c2 = c + DIRS[d][1];
     const a = find(r * n + c), b = find(r2 * n + c2);
-    if (a === b) continue;                               // 이미 연결되어 있으면 벽 유지
+    if (a === b) continue;
     parent[a] = b;
     walls[r][c][d] = 0; walls[r2][c2][OPP[d]] = 0;
   }
   const maze = { n, walls, start: [0, n - 1], goal: [n - 1, 0] };
   maze.shortest = shortestPath(maze);
+  buildGeometry(maze);
   return maze;
 }
 
@@ -118,83 +141,153 @@ function shortestPath(maze) {
   return dist[goal[0]][goal[1]];
 }
 
-// ---- 신경망: 입력 4 -> 은닉 6(tanh) -> 출력 4 ----
+// 벽을 cm 단위 선분으로 바꾸고, 칸마다 "근처 선분 목록"을 만들어 계산을 줄인다
+function buildGeometry(maze) {
+  const { n, walls } = maze, L = CFG.CELL, segs = [];
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++) {
+      const w = walls[r][c];
+      if (w[0]) segs.push({ a: [c * L, r * L], b: [(c + 1) * L, r * L],
+        open: r === maze.start[0] && c === maze.start[1] });                // 입구(그림에서만 뚫림)
+      if (w[2]) segs.push({ a: [c * L, r * L], b: [c * L, (r + 1) * L],
+        open: r === maze.goal[0] && c === maze.goal[1] });                  // 출구(그림에서만 뚫림)
+      if (r === n - 1 && w[1]) segs.push({ a: [c * L, (r + 1) * L], b: [(c + 1) * L, (r + 1) * L], open: false });
+      if (c === n - 1 && w[3]) segs.push({ a: [(c + 1) * L, r * L], b: [(c + 1) * L, (r + 1) * L], open: false });
+    }
+  maze.segs = segs;
+  maze.near = Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, c) => {
+    const x0 = (c - 2) * L, x1 = (c + 3) * L, y0 = (r - 2) * L, y1 = (r + 3) * L;
+    return segs.filter(s =>
+      Math.max(s.a[0], s.b[0]) >= x0 && Math.min(s.a[0], s.b[0]) <= x1 &&
+      Math.max(s.a[1], s.b[1]) >= y0 && Math.min(s.a[1], s.b[1]) <= y1);
+  }));
+  maze.sx = (maze.start[1] + 0.5) * L; maze.sy = (maze.start[0] + 0.5) * L;
+  maze.gx = (maze.goal[1] + 0.5) * L;  maze.gy = (maze.goal[0] + 0.5) * L;
+}
+
+const cellOf = (v, n) => Math.min(n - 1, Math.max(0, Math.floor(v / CFG.CELL)));
+const inGoal = (maze, x, y) =>
+  cellOf(y, maze.n) === maze.goal[0] && cellOf(x, maze.n) === maze.goal[1];
+
+// ================= 센서: 광선을 쏴서 벽까지 거리를 잰다 =================
+function senseOne(near, x, y, ang) {
+  const dx = Math.cos(ang), dy = Math.sin(ang);
+  let best = CFG.SENSOR_MAX;
+  for (const s of near) {
+    const ex = s.b[0] - s.a[0], ey = s.b[1] - s.a[1];
+    const den = dx * ey - dy * ex;
+    if (den === 0) continue;
+    const qx = s.a[0] - x, qy = s.a[1] - y;
+    const t = (qx * ey - qy * ex) / den;
+    const u = (qx * dy - qy * dx) / den;
+    if (t >= 0 && t < best && u >= 0 && u <= 1) best = t;
+  }
+  return best;
+}
+function sense(maze, x, y, th) {
+  const near = maze.near[cellOf(y, maze.n)][cellOf(x, maze.n)];
+  return SENSOR_RAD.map(a => senseOne(near, x, y, th + a));
+}
+
+// ================= 신경망: 센서 5 -> 은닉 6(tanh) -> 바퀴 속도 2(tanh) =================
 function decode(g) {
   let k = 0;
-  const w1 = g.slice(k, k += 4 * HIDDEN);
-  const b1 = g.slice(k, k += HIDDEN);
-  const w2 = g.slice(k, k += HIDDEN * 4);
-  const b2 = g.slice(k, k += 4);
+  const H = CFG.HIDDEN;
+  const w1 = g.slice(k, k += N_IN * H);
+  const b1 = g.slice(k, k += H);
+  const w2 = g.slice(k, k += H * N_OUT);
+  const b2 = g.slice(k, k += N_OUT);
   return { w1, b1, w2, b2 };
 }
-
-function run(gene, maze) {
-  const { w1, b1, w2, b2 } = decode(gene);
-  let [r, c] = maze.start;
-  const path = [[r, c]];
-  for (let t = 0; t < STEPS; t++) {
-    if (r === maze.goal[0] && c === maze.goal[1]) break; // 도착하면 멈춘다
-    const s = maze.walls[r][c];                           // 센서: 상하좌우 벽이면 1
-    const h = [];
-    for (let j = 0; j < HIDDEN; j++) {
-      let v = b1[j];
-      for (let i = 0; i < 4; i++) v += s[i] * w1[i * HIDDEN + j];
-      h.push(Math.tanh(v));
-    }
-    let best = 0, bestV = -Infinity;
-    for (let o = 0; o < 4; o++) {
-      let v = b2[o];
-      for (let j = 0; j < HIDDEN; j++) v += h[j] * w2[j * 4 + o];
-      if (v > bestV) { bestV = v; best = o; }
-    }
-    if (!s[best]) { r += DIRS[best][0]; c += DIRS[best][1]; } // 벽이면 제자리
-    path.push([r, c]);
+function think(net, s) {
+  const H = CFG.HIDDEN, h = new Array(H);
+  for (let j = 0; j < H; j++) {
+    let v = net.b1[j];
+    for (let i = 0; i < N_IN; i++) v += s[i] * net.w1[i * H + j];
+    h[j] = Math.tanh(v);
   }
-  return path;
+  const out = new Array(N_OUT);
+  for (let o = 0; o < N_OUT; o++) {
+    let v = net.b2[o];
+    for (let j = 0; j < H; j++) v += h[j] * net.w2[j * N_OUT + o];
+    out[o] = Math.tanh(v);
+  }
+  return out; // [왼쪽 바퀴, 오른쪽 바퀴], -1 ~ 1
 }
 
-// 적합도 = -(마지막 위치와 목표의 직선거리)
-function fitnessOf(path, maze) {
-  const [r, c] = path.at(-1);
-  return -Math.hypot(r - maze.goal[0], c - maze.goal[1]);
+// ================= 한 마리를 미로에서 달리게 한다 =================
+function run(gene, maze) {
+  const net = decode(gene), R = CFG.ROBOT_R, dt = CFG.DT;
+  let x = maze.sx, y = maze.sy, th = Math.PI / 2;      // 시작: 출발 칸 가운데, 아래쪽을 봄
+  const path = [[x, y, th]];
+  let bumps = 0, solved = false;
+  for (let k = 0; k < STEPS; k++) {
+    if (inGoal(maze, x, y)) { solved = true; break; }  // 목표 칸에 들어오면 멈춘다
+    const near = maze.near[cellOf(y, maze.n)][cellOf(x, maze.n)];
+    const s = SENSOR_RAD.map(a => senseOne(near, x, y, th + a) / CFG.SENSOR_MAX);
+    const [l, r] = think(net, s);
+    const v = (l + r) / 2 * CFG.V_MAX;                 // 앞으로 가는 속도 cm/s
+    th += (l - r) * CFG.V_MAX / CFG.WHEEL_BASE * dt;   // 오른쪽 바퀴가 빠르면 왼쪽으로 돈다
+    x += Math.cos(th) * v * dt; y += Math.sin(th) * v * dt;
+    let hit = false;                                   // 벽과 겹치면 밀어낸다 (미끄러짐)
+    for (let it = 0; it < 2; it++)
+      for (const sg of near) {
+        const ex = sg.b[0] - sg.a[0], ey = sg.b[1] - sg.a[1];
+        let u = ((x - sg.a[0]) * ex + (y - sg.a[1]) * ey) / (ex * ex + ey * ey);
+        u = Math.max(0, Math.min(1, u));
+        const px = sg.a[0] + ex * u, py = sg.a[1] + ey * u;
+        const d = Math.hypot(x - px, y - py);
+        if (d < R && d > 1e-9) { x += (x - px) / d * (R - d); y += (y - py) / d * (R - d); hit = true; }
+      }
+    if (hit) bumps++;
+    path.push([x, y, th]);
+  }
+  const [ex, ey] = path[path.length - 1];
+  if (inGoal(maze, ex, ey)) solved = true;
+  return { path, solved, bumps };
 }
 
-// ---- 유전 알고리즘 + 실시간 애니메이션 ----
-// 한 세대 = 모든 개체가 동시에 출발해 STEPS 걸음 움직이는 장면 -> 점수 계산 -> 다음 세대 생성
+// 적합도 = -(마지막 위치와 목표 칸 가운데 사이의 직선거리 cm)
+const fitnessOf = (res, maze) => {
+  const [x, y] = res.path[res.path.length - 1];
+  return -Math.hypot(x - maze.gx, y - maze.gy);
+};
+
+// ================= 유전 알고리즘 + 실시간 애니메이션 =================
+// 한 세대 = 모든 개체가 동시에 출발해 TIME_LIMIT 초 동안 움직임 -> 점수 -> 다음 세대 생성
 let rnd, maze, pop, gen, runs, t, acc, holdLeft, running = false, last = 0;
 const speedEl = document.getElementById("speed");
-const stepsPerSec = () => Number(speedEl.value);
 
 function init() {
   running = false;
   rnd = makeRng(Number(document.getElementById("seed").value));
-  maze = makeMaze(N, rnd);
-  pop = Array.from({ length: POP }, () =>
+  maze = makeMaze(CFG.N, rnd);
+  pop = Array.from({ length: CFG.POP }, () =>
     Array.from({ length: GENE_LEN }, () => rnd.normal())); // 처음엔 완전 난수
   gen = 0;
   beginGeneration();
-  t = 0;
   render();
 }
 
 function beginGeneration() {
   runs = pop.map((g, i) => {
-    const path = run(g, maze);
-    return { i, path, f: fitnessOf(path, maze) };
+    const res = run(g, maze);
+    return { i, ...res, f: fitnessOf(res, maze) };
   });
-  runs.sort((a, b) => b.f - a.f);                 // runs[0] = 이번 세대 최고 개체
+  runs.sort((a, b) => b.f - a.f);                  // runs[0] = 이번 세대 최고 개체
   t = 0; acc = 0; holdLeft = 0;
 }
 
 function breed() {
-  const parents = runs.slice(0, POP / 5).map(x => pop[x.i]); // 상위 20%
+  const P = CFG.POP;
+  const parents = runs.slice(0, P / 5).map(x => pop[x.i]); // 상위 20%
   const next = parents.slice();
-  while (next.length < POP) {
+  while (next.length < P) {
     const a = parents[rnd.int(parents.length)], b = parents[rnd.int(parents.length)];
-    const cut = 1 + rnd.int(GENE_LEN - 1); // 한 점 교차
+    const cut = 1 + rnd.int(GENE_LEN - 1);                 // 한 점 교차
     const child = a.slice(0, cut).concat(b.slice(cut));
     for (let i = 0; i < GENE_LEN; i++)
-      if (rnd() < 0.05) child[i] += rnd.normal(0, 0.5); // 돌연변이
+      if (rnd() < 0.05) child[i] += rnd.normal(0, 0.5);    // 돌연변이
     next.push(child);
   }
   pop = next;
@@ -206,10 +299,10 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   if (running) {
     if (t < STEPS) {
-      acc += dt * stepsPerSec();
+      acc += dt * Number(speedEl.value);
       while (acc >= 1 && t < STEPS) { t++; acc -= 1; }
     } else {
-      holdLeft += dt;                              // 세대가 끝나면 잠깐 멈춰서 결과를 보여준다
+      holdLeft += dt;                                  // 세대가 끝나면 잠깐 멈춰서 결과를 보여준다
       if (holdLeft > 0.8) breed();
     }
     render();
@@ -217,64 +310,85 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-// ---- 그리기 (색은 CSS 토큰에서 읽는다) ----
+// ================= 그리기 (색은 CSS 토큰에서 읽는다) =================
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const posAt = (path, k) => path[Math.min(k, path.length - 1)];
+const at = (path, k) => path[Math.min(k, path.length - 1)];
 function render() {
   const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
-  const pad = 24, s = (cv.width - 2 * pad) / maze.n;
-  const X = c => pad + c * s, Y = r => pad + r * s;
-  const cx = c => X(c) + s / 2, cy = r => Y(r) + s / 2;
+  const pad = 24, sc = (cv.width - 2 * pad) / (CFG.N * CFG.CELL);   // cm -> px
+  const X = x => pad + x * sc, Y = y => pad + y * sc;
   ctx.fillStyle = css("--floor"); ctx.fillRect(0, 0, cv.width, cv.height);
 
-  const dot = (p, col, rad) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx(p[1]), cy(p[0]), rad, 0, 7); ctx.fill(); };
+  const disc = (x, y, rad, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(x), Y(y), rad * sc, 0, 7); ctx.fill(); };
 
-  // 벽: 위/왼쪽 벽은 모든 칸, 아래/오른쪽 벽은 가장자리 칸만 그려 중복을 피한다
   ctx.strokeStyle = css("--wall"); ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.beginPath();
-  const line = (x1, y1, x2, y2) => { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); };
-  for (let r = 0; r < maze.n; r++)
-    for (let c = 0; c < maze.n; c++) {
-      const w = maze.walls[r][c];
-      const isStartTop = r === maze.start[0] && c === maze.start[1];   // 입구: 바깥벽 구멍
-      const isGoalLeft = r === maze.goal[0] && c === maze.goal[1];     // 출구: 바깥벽 구멍
-      if (w[0] && !isStartTop) line(X(c), Y(r), X(c + 1), Y(r));
-      if (w[2] && !isGoalLeft) line(X(c), Y(r), X(c), Y(r + 1));
-      if (r === maze.n - 1 && w[1]) line(X(c), Y(r + 1), X(c + 1), Y(r + 1));
-      if (c === maze.n - 1 && w[3]) line(X(c + 1), Y(r), X(c + 1), Y(r + 1));
-    }
+  for (const s of maze.segs) {
+    if (s.open) continue;
+    ctx.moveTo(X(s.a[0]), Y(s.a[1])); ctx.lineTo(X(s.b[0]), Y(s.b[1]));
+  }
   ctx.stroke();
 
-  dot(maze.start, css("--start"), s * 0.22); dot(maze.goal, css("--goal"), s * 0.22);
+  disc(maze.sx, maze.sy, CFG.CELL * 0.22, css("--start"));
+  disc(maze.gx, maze.gy, CFG.CELL * 0.22, css("--goal"));
 
-  // 최고 개체의 지나온 길 (흔적)
-  const best = runs[0].path;
-  ctx.strokeStyle = css("--path"); ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.globalAlpha = 0.45; ctx.beginPath();
-  for (let k = 0; k <= Math.min(t, best.length - 1); k++) {
-    const [r, c] = best[k];
-    k ? ctx.lineTo(cx(c), cy(r)) : ctx.moveTo(cx(c), cy(r));
+  const best = runs[0];
+  const upto = Math.min(t, best.path.length - 1);
+  ctx.strokeStyle = css("--best"); ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.globalAlpha = 0.5; ctx.beginPath();
+  for (let k = 0; k <= upto; k++) {
+    const [x, y] = best.path[k];
+    k ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y));
   }
-  ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.stroke();
 
-  // 모든 개체: 못한 개체부터 그려서 최고 개체가 맨 위에 보이게
+  ctx.globalAlpha = 0.3;
   for (let k = runs.length - 1; k >= 1; k--) {
-    ctx.globalAlpha = 0.4; dot(posAt(runs[k].path, t), css("--path"), s * 0.13);
+    const [x, y] = at(runs[k].path, t);
+    disc(x, y, CFG.ROBOT_R, css("--path"));
   }
-  ctx.globalAlpha = 1; dot(posAt(best, t), css("--best"), s * 0.2);
+  ctx.globalAlpha = 1;
 
-  const mean = runs.reduce((a, x) => a + x.f, 0) / POP;
-  const done = t >= STEPS;
-  const solved = runs.filter(x => x.f === 0).length;
+  // 최고 개체: 센서 광선과 몸, 앞쪽 표시
+  const [bx, by, bth] = at(best.path, t);
+  const ranges = sense(maze, bx, by, bth);
+  ctx.strokeStyle = css("--muted"); ctx.lineWidth = 1; ctx.globalAlpha = 0.8;
+  SENSOR_RAD.forEach((a, i) => {
+    const ex = bx + Math.cos(bth + a) * ranges[i], ey = by + Math.sin(bth + a) * ranges[i];
+    ctx.beginPath(); ctx.moveTo(X(bx), Y(by)); ctx.lineTo(X(ex), Y(ey)); ctx.stroke();
+    disc(ex, ey, 0.8, css("--muted"));
+  });
+  ctx.globalAlpha = 1;
+  disc(bx, by, CFG.ROBOT_R, css("--best"));
+  ctx.strokeStyle = css("--bg"); ctx.lineWidth = 2; ctx.beginPath();
+  ctx.moveTo(X(bx), Y(by)); ctx.lineTo(X(bx + Math.cos(bth) * CFG.ROBOT_R), Y(by + Math.sin(bth) * CFG.ROBOT_R)); ctx.stroke();
+
+  const P = CFG.POP, mean = runs.reduce((a, x) => a + x.f, 0) / P;
+  const done = t >= STEPS, solved = runs.filter(x => x.solved).length;
   document.getElementById("info").textContent =
-    `세대 ${gen}   걸음 ${Math.min(t, STEPS)}/${STEPS}\n` +
-    `최고 적합도 ${runs[0].f.toFixed(2)}  평균 ${mean.toFixed(2)}\n` +
-    `도착한 개체 ${done ? solved : "?"}/${POP} ${done ? "" : "(세대가 끝나면 집계)"}\n` +
-    `미로 ${N}x${N}칸, 최단 경로 ${maze.shortest}칸`;
+    `세대 ${gen}   시간 ${(Math.min(t, STEPS) * CFG.DT).toFixed(1)} / ${CFG.TIME_LIMIT}초\n` +
+    `최고 적합도 ${runs[0].f.toFixed(0)}cm  평균 ${mean.toFixed(0)}cm   (0에 가까울수록 좋음)\n` +
+    `도착한 개체 ${done ? solved : "?"}/${P} ${done ? "" : "(세대가 끝나면 집계)"}\n` +
+    `최고 개체가 벽에 부딪힌 횟수 ${best.bumps}번 (제어 ${STEPS}번 중)\n` +
+    `미로 ${CFG.N}x${CFG.N}칸, 최단 경로 ${maze.shortest}칸 (${maze.shortest * CFG.CELL}cm)`;
 }
 
+// ================= 버튼 =================
 document.getElementById("start").onclick = () => { running = true; };
 document.getElementById("pause").onclick = () => { running = false; };
 document.getElementById("reset").onclick = init;
 document.getElementById("seed").onchange = init;
+document.getElementById("export").onclick = () => {
+  const data = {
+    description: "센서 -> 은닉(tanh) -> [왼쪽 바퀴, 오른쪽 바퀴](tanh). w1[i*hidden+j], w2[j*outputs+o] 순서",
+    sensors_deg: CFG.SENSOR_DEG, sensor_max_cm: CFG.SENSOR_MAX,
+    hidden: CFG.HIDDEN, outputs: N_OUT, wheel_max_cm_s: CFG.V_MAX, wheel_base_cm: CFG.WHEEL_BASE,
+    generation: gen, fitness_cm: Number(runs[0].f.toFixed(2)),
+    genome: pop[runs[0].i].map(v => Number(v.toFixed(5))),
+  };
+  const box = document.getElementById("exportBox"), note = document.getElementById("exportNote");
+  box.value = JSON.stringify(data, null, 1); box.hidden = false; box.select();
+  note.hidden = false; note.textContent = "클립보드 복사를 시도했습니다. 안 되면 위 내용을 직접 복사하세요.";
+  try { navigator.clipboard.writeText(box.value).catch(() => {}); } catch (e) { /* 직접 복사 */ }
+};
 init();
 requestAnimationFrame(frame);
 </script>
