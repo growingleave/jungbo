@@ -70,6 +70,9 @@
   <div class="row" id="bumpRow" hidden>
     <label for="bump" class="ctl">충돌 감점 <input id="bump" type="range" min="0" max="1" step="0.05" value="0.2"><output id="bumpVal"></output></label>
   </div>
+  <div class="row" id="revisitRow" hidden>
+    <label for="revisit" class="ctl">재방문 감점 <input id="revisit" type="range" min="0" max="5" step="0.5" value="1"><output id="revisitVal"></output></label>
+  </div>
   <div class="row" id="exploreRow" hidden>
     <label for="explore" class="ctl">탐험 보상 최대값 <input id="explore" type="range" min="1" max="30" step="1" value="10"><output id="exploreVal"></output></label>
   </div>
@@ -127,6 +130,7 @@ const EXPLORE_K = 5;                           // 탐험 보상: 이 세대 수�
 const partEvalExplore = m => `기본 점수 = -(목표까지 직선거리 cm). 도착 못한 개체에게 탐험 보상 = 가중치 × Σ(칸이 목표와 가까운 정도 ÷ 그 칸을 방문한 개체 수) 을 더함. 가중치는 0에서 시작하고 가장 가까운 거리가 ${EXPLORE_K}세대 동안 3cm 넘게 좋아지지 않으면 최대 ${m}의 1/4씩 단계적으로 올라가며, 거리가 좋아지면 0으로 돌아감. 미로 하나로만 평가.`;
 const SOLVE_BONUS = 200;                      // 이동 거리 항목에서 도착한 개체에게 주는 기본 점수
 const partEvalLen = w => `도착한 개체: 점수 = ${SOLVE_BONUS} - ${w} × 이동 거리(cm), 짧게 갈수록 높음. 도착 못한 개체: -(목표까지 직선거리 cm). 충돌 감점 없음. 미로 하나로만 평가.`;
+const partEvalPhase = (pen, w, m, rv) => `도착 전(도착 개체가 아직 한 마리도 없을 때): -(목표까지 직선거리) - ${pen} × 충돌 횟수 + 탐험 보상(가중치는 0에서 시작해 정체되면 최대 ${m}까지 단계적으로 상승). 도착이 처음 나온 뒤: 탐험 보상을 끄고 재방문 감점 ${rv} × (이미 지나간 칸에 다시 들어간 횟수)를 모든 개체에 적용. 도착한 개체: ${SOLVE_BONUS} - ${w} × 이동 거리 - ${pen} × 충돌 횟수. 도착한 개체는 점수와 상관없이 항상 도착 못한 개체보다 위로 정렬되어 부모로 그대로 보존됨.`;
 const partEvalAll = (pen, w, m) => `도착한 개체: 점수 = ${SOLVE_BONUS} - ${w} × 이동 거리(cm) - ${pen} × 벽에 부딪힌 제어 횟수. 도착 못한 개체: -(목표까지 직선거리 cm) - ${pen} × 벽에 부딪힌 제어 횟수 + 탐험 보상. 탐험 보상 = 가중치 × Σ(칸이 목표와 가까운 정도 ÷ 그 칸을 방문한 개체 수), 가중치는 0에서 시작해 가장 가까운 거리가 ${EXPLORE_K}세대 동안 3cm 넘게 좋아지지 않으면 최대 ${m}의 1/4씩 올라가고 좋아지면 0으로 돌아감. 미로 하나로만 평가.`;
 const partEvalBoth = (pen, w) => `도착한 개체: 점수 = ${SOLVE_BONUS} - ${w} × 이동 거리(cm) - ${pen} × 벽에 부딪힌 제어 횟수. 도착 못한 개체: -(목표까지 직선거리 cm) - ${pen} × 벽에 부딪힌 제어 횟수. 미로 하나로만 평가.`;
 const partEvalBump = pen => `적합도 = -(마지막 위치와 목표 칸 가운데 사이 직선거리 cm) - ${pen} × (벽에 부딪힌 제어 횟수). 미로 하나로만 평가.`;
@@ -156,6 +160,10 @@ const PRESETS = [
     parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 처음 난수 유전자는 A와 같음." },
     sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
     angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
+  { key: "s9", id: "A-단계", stage: "단계 9", label: "A-단계 · 단계 9: 누적 + 도착 전/후 전환 + 재방문 감점 + 도착 개체 보호", tunable: true, tunableLen: true, explore: true, revisit: true, phase: true, arrivalFirst: true, bumpPenalty: 0.2, lenWeight: 0.1,
+    parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 도착한 개체를 항상 위에 정렬. 처음 난수 유전자는 A와 같음." },
+    sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
+    angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
   { key: "s3b", id: "B", stage: "단계 3-2", label: "B · 단계 3-2: 상하좌우 4센서 + 4방향 이동",
     parts: { 개체: "거리 센서 4개(위, 아래, 왼쪽, 오른쪽)가 화면 기준으로 고정. 방향(헤딩)이 없고, 출력 4개 중 최댓값 방향으로 30cm/s 이동.", 평가: PART_EVAL, 진화: PART_EVOL },
     sensorSet: "abs", relative: false, move: "dir4", nOut: 4,
@@ -171,6 +179,8 @@ function makeGroup(P) {                       // 선택한 방식으로 한 무�
   G.lenWeight = P.tunableLen ? Number(lenEl.value) : 0;                      // 이동 거리 가중치 (점수/cm)
   G.exploreMax = P.explore ? Number(exploreEl.value) : 0;                    // 탐험 보상 가중치의 최대값
   G.exploreW = 0; G.stag = 0;                                                // 현재 가중치, 정체 세대 수
+  G.revisitMax = P.revisit ? Number(revisitEl.value) : 0;                    // 재방문 감점 (점수/번), 도착이 나온 뒤 적용
+  G.phase = !!P.phase; G.arrivalFirst = !!P.arrivalFirst; G.arrived = false;  // 단계 전환, 도착 개체 우선 정렬, 도착이 나왔는지
   G.mark = P.id.slice(0, 1);
   G.nIn = G.angles.length;
   G.geneLen = G.nIn * CFG.HIDDEN + CFG.HIDDEN + CFG.HIDDEN * G.nOut + G.nOut;
@@ -381,8 +391,9 @@ const presetEl = document.getElementById("preset");
 const bumpEl = document.getElementById("bump");
 const lenEl = document.getElementById("len");
 const exploreEl = document.getElementById("explore");
+const revisitEl = document.getElementById("revisit");
 presetEl.innerHTML = PRESETS.map(p => `<option value="${p.key}">${p.label}</option>`).join("");
-presetEl.value = "s8";                         // 처음 열면 가장 최근(누적) 방식이 선택되어 슬라이더가 모두 보인다
+presetEl.value = "s9";                        // 처음 열면 가장 최근(누적) 방식이 선택되어 슬라이더가 모두 보인다
 
 function init() {
   running = false;
@@ -397,11 +408,14 @@ function init() {
     G.hist = [];
   });
   const parts = { ...P.parts };
-  if (P.tunable && P.tunableLen && P.explore) parts.평가 = partEvalAll(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight, GROUPS[0].exploreMax);
+  if (P.phase) parts.평가 = partEvalPhase(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight, GROUPS[0].exploreMax, GROUPS[0].revisitMax);
+  else if (P.tunable && P.tunableLen && P.explore) parts.평가 = partEvalAll(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight, GROUPS[0].exploreMax);
   else if (P.tunable && P.tunableLen) parts.평가 = partEvalBoth(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight);
   else if (P.tunable) parts.평가 = partEvalBump(GROUPS[0].bumpPenalty);
   else if (P.tunableLen) parts.평가 = partEvalLen(GROUPS[0].lenWeight);
   else if (P.explore) parts.평가 = partEvalExplore(GROUPS[0].exploreMax);
+  document.getElementById("revisitRow").hidden = !P.revisit;
+  document.getElementById("revisitVal").textContent = GROUPS[0].revisitMax.toFixed(1) + " 점 / 번";
   document.getElementById("exploreRow").hidden = !P.explore;
   document.getElementById("exploreVal").textContent = "최대 " + GROUPS[0].exploreMax;
   document.getElementById("bumpRow").hidden = !P.tunable;
@@ -423,12 +437,17 @@ function beginGeneration() {
       let f = -d - G.bumpPenalty * res.bumps;
       // 이동 거리 항목: 도착한 개체만 (SOLVE_BONUS - 가중치 x 이동 거리). 도착한 개체는 항상 못 도착한 개체보다 높다.
       if (G.lenWeight && res.solved) f = SOLVE_BONUS - G.lenWeight * res.len - G.bumpPenalty * res.bumps;
-      return { i, ...res, d, f };
+      return { i, ...res, d, f, rev: countRevisits(res.path) };
     });
     if (G.explore) addExploreBonus(G);
-    G.runs.sort((a, b) => b.f - a.f);                  // runs[0] = 이번 세대 최고 개체
+    // 재방문 감점: 도착이 한 번이라도 나온 뒤부터 적용
+    if (G.revisitMax && G.arrived) for (const r of G.runs) r.f -= G.revisitMax * r.rev;
+    // 도착한 개체를 항상 위에 두는 방식은 점수와 상관없이 도착한 개체를 먼저 정렬해서 부모(그대로 보존)로 남긴다
+    G.runs.sort((a, b) => G.arrivalFirst ? ((b.solved - a.solved) || (b.f - a.f)) : (b.f - a.f));   // runs[0] = 이번 세대 최고 개체
+    G.usedArrived = G.arrived;                         // 이번 세대에 적용된 단계 (화면 표시용)
+    if (G.runs.some(x => x.solved)) G.arrived = true;
     G.hist[gen] = {
-      best: G.runs[0].f, dist: G.runs[0].d, bumps: G.runs[0].bumps, len: G.runs[0].len,
+      best: G.runs[0].f, dist: G.runs[0].d, bumps: G.runs[0].bumps, len: G.runs[0].len, rev: G.runs[0].rev,
       solved: G.runs.filter(x => x.solved).length,
       explore: G.usedW || 0, stag: G.stag || 0,
     };
@@ -440,8 +459,21 @@ function beginGeneration() {
 //  새로움 = 방문한 칸들의 (목표와 가까운 정도 / 그 칸을 방문한 개체 수)의 합. 남들이 안 간, 목표에 가까운 칸일수록 큼.
 //  보상 = 가중치 x 새로움. 가중치는 0에서 시작하고, 가장 가까운 거리가 EXPLORE_K 세대 동안 3cm 넘게 좋아지지 않으면
 //  최대값의 1/4씩 단계적으로 커진다. 거리가 좋아지면 다시 0으로 돌아간다.
+// 재방문 횟수: 이미 지나간 칸에 다시 들어간 횟수. 칸 경계에서 떨리는 것을 세지 않도록 칸 안쪽 3cm 이상일 때만 칸이 바뀐 것으로 본다.
+function countRevisits(path) {
+  const n = maze.n, L = CFG.CELL, m = 3, seen = new Set();
+  let prev = -1, rev = 0;
+  for (const [x, y] of path) {
+    const lx = x - Math.floor(x / L) * L, ly = y - Math.floor(y / L) * L;
+    if (lx < m || lx > L - m || ly < m || ly > L - m) continue;
+    const c = cellOf(y, n) * n + cellOf(x, n);
+    if (c !== prev) { if (seen.has(c)) rev++; seen.add(c); prev = c; }
+  }
+  return rev;
+}
+
 function addExploreBonus(G) {
-  const n = maze.n, w = G.exploreW;
+  const n = maze.n, w = (G.phase && G.arrived) ? 0 : G.exploreW;   // 단계 방식은 도착이 나온 뒤 탐험 보상을 끈다
   G.usedW = w;
   const sets = G.runs.map(r => {
     const s = new Set();
@@ -568,7 +600,8 @@ function render() {
     const b = G.runs[0];
     return `[${G.name}]\n` +
       `  최고 적합도 ${b.f.toFixed(0)}  평균 ${mean.toFixed(0)}  도착 ${solved}/${P}\n` +
-      `  최고 개체: 목표까지 ${b.d.toFixed(0)}cm, 이동 ${b.len.toFixed(0)}cm, 벽 충돌 ${b.bumps}번` +
+      `  최고 개체: 목표까지 ${b.d.toFixed(0)}cm, 이동 ${b.len.toFixed(0)}cm, 벽 충돌 ${b.bumps}번, 재방문 ${b.rev}번` +
+      (G.phase ? `\n  지금 단계: ${G.usedArrived ? "도착이 나온 뒤 (탐험 보상 끔, 재방문 감점 켬)" : "도착 전 (탐험 보상 켬)"}` : "") +
       (G.bumpPenalty ? ` (감점 ${(G.bumpPenalty * b.bumps).toFixed(0)})` : "") +
       (G.explore ? `\n  탐험 보상 가중치 ${G.usedW.toFixed(1)} / 최대 ${G.exploreMax}  (거리 정체 ${G.stag}세대, 최고 개체 보상 ${(b.bonus || 0).toFixed(0)})` : "");
   };
@@ -683,7 +716,8 @@ document.getElementById("start").onclick = () => { running = true; };
 document.getElementById("pause").onclick = () => { running = false; };
 document.getElementById("reset").onclick = init;
 document.getElementById("seed").onchange = init;
-exploreEl.onchange = init;                     // 탐험 보상 최대값을 바꾸면 처음부터 다시 시작
+revisitEl.onchange = init;                     // 재방문 감점을 바꾸면 처음부터 다시 시작
+exploreEl.onchange = init;                    // 탐험 보상 최대값을 바꾸면 처음부터 다시 시작
 lenEl.onchange = init;                        // 이동 거리 가중치를 바꾸면 처음부터 다시 시작
 bumpEl.onchange = init;                      // 감점 크기를 바꾸면 처음부터 다시 시작
 presetEl.onchange = init;                    // 방식을 바꾸면 처음부터 다시 시작 (같은 시드의 같은 미로)
