@@ -122,6 +122,7 @@ const MOVE_DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // 4방향 이동: 위, �
 const PART_EVAL = "적합도 = 마지막 위치와 목표 칸 가운데 사이 직선거리(cm)의 음수. 충돌 벌점 없음. 미로 하나로만 평가.";
 const SOLVE_BONUS = 200;                       // 이동 거리 항목에서 도착한 개체에게 주는 기본 점수
 const partEvalLen = w => `도착한 개체: 점수 = ${SOLVE_BONUS} - ${w} × 이동 거리(cm), 짧게 갈수록 높음. 도착 못한 개체: -(목표까지 직선거리 cm). 충돌 감점 없음. 미로 하나로만 평가.`;
+const partEvalBoth = (pen, w) => `도착한 개체: 점수 = ${SOLVE_BONUS} - ${w} × 이동 거리(cm) - ${pen} × 벽에 부딪힌 제어 횟수. 도착 못한 개체: -(목표까지 직선거리 cm) - ${pen} × 벽에 부딪힌 제어 횟수. 미로 하나로만 평가.`;
 const partEvalBump = pen => `적합도 = -(마지막 위치와 목표 칸 가운데 사이 직선거리 cm) - ${pen} × (벽에 부딪힌 제어 횟수). 미로 하나로만 평가.`;
 const PART_EVOL = "상위 20%를 부모로, 한 점 교차, 돌연변이 5%(크기 0.5), 개체 100마리.";
 const PRESETS = [
@@ -134,6 +135,10 @@ const PRESETS = [
     sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
     angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
   { key: "s5", id: "A-거리", stage: "단계 5", label: "A-거리 · 단계 5: A + 이동 거리 최소화", tunableLen: true, lenWeight: 0.1,
+    parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 처음 난수 유전자는 A와 같음." },
+    sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
+    angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
+  { key: "s6", id: "A-종합", stage: "단계 6", label: "A-종합 · 단계 6: A + 충돌 감점 + 이동 거리", tunable: true, tunableLen: true, bumpPenalty: 0.2, lenWeight: 0.1,
     parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 처음 난수 유전자는 A와 같음." },
     sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
     angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
@@ -368,8 +373,9 @@ function init() {
     G.hist = [];
   });
   const parts = { ...P.parts };
-  if (P.tunable) parts.평가 = partEvalBump(GROUPS[0].bumpPenalty);
-  if (P.tunableLen) parts.평가 = partEvalLen(GROUPS[0].lenWeight);
+  if (P.tunable && P.tunableLen) parts.평가 = partEvalBoth(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight);
+  else if (P.tunable) parts.평가 = partEvalBump(GROUPS[0].bumpPenalty);
+  else if (P.tunableLen) parts.평가 = partEvalLen(GROUPS[0].lenWeight);
   document.getElementById("bumpRow").hidden = !P.tunable;
   document.getElementById("bumpVal").textContent = GROUPS[0].bumpPenalty.toFixed(2) + " cm / 번";
   document.getElementById("lenRow").hidden = !P.tunableLen;
