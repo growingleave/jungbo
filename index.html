@@ -70,6 +70,9 @@
   <div class="row" id="bumpRow" hidden>
     <label for="bump" class="ctl">충돌 감점 <input id="bump" type="range" min="0" max="1" step="0.05" value="0.2"><output id="bumpVal"></output></label>
   </div>
+  <div class="row" id="exploreRow" hidden>
+    <label for="explore" class="ctl">탐험 보상 최대값 <input id="explore" type="range" min="1" max="30" step="1" value="10"><output id="exploreVal"></output></label>
+  </div>
   <div class="row" id="lenRow" hidden>
     <label for="len" class="ctl">이동 거리 가중치 <input id="len" type="range" min="0.02" max="0.3" step="0.01" value="0.1"><output id="lenVal"></output></label>
   </div>
@@ -120,7 +123,9 @@ const rad = d => d * Math.PI / 180;
 //  rngOffset: 처음 난수 유전자를 만드는 난수열 번호. 예전 결과를 그대로 재현하려고 항목마다 고정한다.
 const MOVE_DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // 4방향 이동: 위, 아래, 왼쪽, 오른쪽 (화면 좌표)
 const PART_EVAL = "적합도 = 마지막 위치와 목표 칸 가운데 사이 직선거리(cm)의 음수. 충돌 벌점 없음. 미로 하나로만 평가.";
-const SOLVE_BONUS = 200;                       // 이동 거리 항목에서 도착한 개체에게 주는 기본 점수
+const EXPLORE_K = 5;                           // 탐험 보상: 이 세대 수만큼 거리가 안 좋아지면 가중치를 한 단계 올린다
+const partEvalExplore = m => `기본 점수 = -(목표까지 직선거리 cm). 도착 못한 개체에게 탐험 보상 = 가중치 × Σ(칸이 목표와 가까운 정도 ÷ 그 칸을 방문한 개체 수) 을 더함. 가중치는 0에서 시작하고 가장 가까운 거리가 ${EXPLORE_K}세대 동안 3cm 넘게 좋아지지 않으면 최대 ${m}의 1/4씩 단계적으로 올라가며, 거리가 좋아지면 0으로 돌아감. 미로 하나로만 평가.`;
+const SOLVE_BONUS = 200;                      // 이동 거리 항목에서 도착한 개체에게 주는 기본 점수
 const partEvalLen = w => `도착한 개체: 점수 = ${SOLVE_BONUS} - ${w} × 이동 거리(cm), 짧게 갈수록 높음. 도착 못한 개체: -(목표까지 직선거리 cm). 충돌 감점 없음. 미로 하나로만 평가.`;
 const partEvalBoth = (pen, w) => `도착한 개체: 점수 = ${SOLVE_BONUS} - ${w} × 이동 거리(cm) - ${pen} × 벽에 부딪힌 제어 횟수. 도착 못한 개체: -(목표까지 직선거리 cm) - ${pen} × 벽에 부딪힌 제어 횟수. 미로 하나로만 평가.`;
 const partEvalBump = pen => `적합도 = -(마지막 위치와 목표 칸 가운데 사이 직선거리 cm) - ${pen} × (벽에 부딪힌 제어 횟수). 미로 하나로만 평가.`;
@@ -142,6 +147,10 @@ const PRESETS = [
     parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 처음 난수 유전자는 A와 같음." },
     sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
     angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
+  { key: "s7", id: "A-탐험", stage: "단계 7", label: "A-탐험 · 단계 7: A + 적응형 탐험 보상", explore: true,
+    parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 처음 난수 유전자는 A와 같음." },
+    sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
+    angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
   { key: "s3b", id: "B", stage: "단계 3-2", label: "B · 단계 3-2: 상하좌우 4센서 + 4방향 이동",
     parts: { 개체: "거리 센서 4개(위, 아래, 왼쪽, 오른쪽)가 화면 기준으로 고정. 방향(헤딩)이 없고, 출력 4개 중 최댓값 방향으로 30cm/s 이동.", 평가: PART_EVAL, 진화: PART_EVOL },
     sensorSet: "abs", relative: false, move: "dir4", nOut: 4,
@@ -155,6 +164,8 @@ function makeGroup(P) {                       // 선택한 방식으로 한 무�
   const G = { ...P, name: P.label };
   G.bumpPenalty = P.tunable ? Number(bumpEl.value) : (P.bumpPenalty || 0);   // 충돌 감점 (cm/번)
   G.lenWeight = P.tunableLen ? Number(lenEl.value) : 0;                      // 이동 거리 가중치 (점수/cm)
+  G.exploreMax = P.explore ? Number(exploreEl.value) : 0;                    // 탐험 보상 가중치의 최대값
+  G.exploreW = 0; G.stag = 0;                                                // 현재 가중치, 정체 세대 수
   G.mark = P.id.slice(0, 1);
   G.nIn = G.angles.length;
   G.geneLen = G.nIn * CFG.HIDDEN + CFG.HIDDEN + CFG.HIDDEN * G.nOut + G.nOut;
@@ -246,6 +257,12 @@ function buildGeometry(maze) {
   }));
   maze.sx = (maze.start[1] + 0.5) * L; maze.sy = (maze.start[0] + 0.5) * L;
   maze.gx = (maze.goal[1] + 0.5) * L;  maze.gy = (maze.goal[0] + 0.5) * L;
+  // 칸마다 "목표와 가까운 정도" (목표 칸 1, 출발~목표 직선거리의 75% 이상 떨어지면 0). 탐험 보상에서 쓴다.
+  const R = 0.75 * Math.hypot(maze.sx - maze.gx, maze.sy - maze.gy);
+  maze.prox = Array.from({ length: n * n }, (_, c) => {
+    const cx = ((c % n) + 0.5) * L, cy = (Math.floor(c / n) + 0.5) * L;
+    return Math.max(0, 1 - Math.hypot(cx - maze.gx, cy - maze.gy) / R);
+  });
 }
 
 const cellOf = (v, n) => Math.min(n - 1, Math.max(0, Math.floor(v / CFG.CELL)));
@@ -358,6 +375,7 @@ const speedEl = document.getElementById("speed");
 const presetEl = document.getElementById("preset");
 const bumpEl = document.getElementById("bump");
 const lenEl = document.getElementById("len");
+const exploreEl = document.getElementById("explore");
 presetEl.innerHTML = PRESETS.map(p => `<option value="${p.key}">${p.label}</option>`).join("");
 
 function init() {
@@ -376,6 +394,9 @@ function init() {
   if (P.tunable && P.tunableLen) parts.평가 = partEvalBoth(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight);
   else if (P.tunable) parts.평가 = partEvalBump(GROUPS[0].bumpPenalty);
   else if (P.tunableLen) parts.평가 = partEvalLen(GROUPS[0].lenWeight);
+  else if (P.explore) parts.평가 = partEvalExplore(GROUPS[0].exploreMax);
+  document.getElementById("exploreRow").hidden = !P.explore;
+  document.getElementById("exploreVal").textContent = "최대 " + GROUPS[0].exploreMax;
   document.getElementById("bumpRow").hidden = !P.tunable;
   document.getElementById("bumpVal").textContent = GROUPS[0].bumpPenalty.toFixed(2) + " cm / 번";
   document.getElementById("lenRow").hidden = !P.tunableLen;
@@ -397,13 +418,41 @@ function beginGeneration() {
       if (G.lenWeight && res.solved) f = SOLVE_BONUS - G.lenWeight * res.len - G.bumpPenalty * res.bumps;
       return { i, ...res, d, f };
     });
+    if (G.explore) addExploreBonus(G);
     G.runs.sort((a, b) => b.f - a.f);                  // runs[0] = 이번 세대 최고 개체
     G.hist[gen] = {
       best: G.runs[0].f, dist: G.runs[0].d, bumps: G.runs[0].bumps, len: G.runs[0].len,
       solved: G.runs.filter(x => x.solved).length,
+      explore: G.usedW || 0, stag: G.stag || 0,
     };
   }
   t = 0; acc = 0; holdLeft = 0;
+}
+
+// 적응형 탐험 보상 (도착하지 못한 개체에게만).
+//  새로움 = 방문한 칸들의 (목표와 가까운 정도 / 그 칸을 방문한 개체 수)의 합. 남들이 안 간, 목표에 가까운 칸일수록 큼.
+//  보상 = 가중치 x 새로움. 가중치는 0에서 시작하고, 가장 가까운 거리가 EXPLORE_K 세대 동안 3cm 넘게 좋아지지 않으면
+//  최대값의 1/4씩 단계적으로 커진다. 거리가 좋아지면 다시 0으로 돌아간다.
+function addExploreBonus(G) {
+  const n = maze.n, w = G.exploreW;
+  G.usedW = w;
+  const sets = G.runs.map(r => {
+    const s = new Set();
+    for (const [x, y] of r.path) s.add(cellOf(y, n) * n + cellOf(x, n));
+    return s;
+  });
+  const count = new Map();
+  for (const s of sets) for (const c of s) count.set(c, (count.get(c) || 0) + 1);
+  G.runs.forEach((r, k) => {
+    let nov = 0;
+    for (const c of sets[k]) nov += maze.prox[c] / count.get(c);
+    r.nov = nov;
+    r.bonus = r.solved ? 0 : w * nov;
+    r.f += r.bonus;
+  });
+  const minD = Math.min(...G.runs.map(r => r.d));
+  if (G.recordD === undefined || minD < G.recordD - 3) { G.recordD = minD; G.stag = 0; } else G.stag++;
+  G.exploreW = G.exploreMax / 4 * Math.min(4, Math.floor(G.stag / EXPLORE_K));   // 다음 세대에 쓸 가중치
 }
 
 function breed() {
@@ -513,7 +562,8 @@ function render() {
     return `[${G.name}]\n` +
       `  최고 적합도 ${b.f.toFixed(0)}  평균 ${mean.toFixed(0)}  도착 ${solved}/${P}\n` +
       `  최고 개체: 목표까지 ${b.d.toFixed(0)}cm, 이동 ${b.len.toFixed(0)}cm, 벽 충돌 ${b.bumps}번` +
-      (G.bumpPenalty ? ` (감점 ${(G.bumpPenalty * b.bumps).toFixed(0)})` : "");
+      (G.bumpPenalty ? ` (감점 ${(G.bumpPenalty * b.bumps).toFixed(0)})` : "") +
+      (G.explore ? `\n  탐험 보상 가중치 ${G.usedW.toFixed(1)} / 최대 ${G.exploreMax}  (거리 정체 ${G.stag}세대, 최고 개체 보상 ${(b.bonus || 0).toFixed(0)})` : "");
   };
   document.getElementById("info").textContent =
     `세대 ${gen}   시간 ${(Math.min(t, STEPS) * CFG.DT).toFixed(1)} / ${CFG.TIME_LIMIT}초\n` +
@@ -626,7 +676,8 @@ document.getElementById("start").onclick = () => { running = true; };
 document.getElementById("pause").onclick = () => { running = false; };
 document.getElementById("reset").onclick = init;
 document.getElementById("seed").onchange = init;
-lenEl.onchange = init;                         // 이동 거리 가중치를 바꾸면 처음부터 다시 시작
+exploreEl.onchange = init;                     // 탐험 보상 최대값을 바꾸면 처음부터 다시 시작
+lenEl.onchange = init;                        // 이동 거리 가중치를 바꾸면 처음부터 다시 시작
 bumpEl.onchange = init;                      // 감점 크기를 바꾸면 처음부터 다시 시작
 presetEl.onchange = init;                    // 방식을 바꾸면 처음부터 다시 시작 (같은 시드의 같은 미로)
 document.getElementById("export").onclick = () => {
