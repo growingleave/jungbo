@@ -51,7 +51,7 @@
 <body>
 <main>
   <h1>유전 로보틱스 미로 · 센서 비교</h1>
-  <p class="sub">같은 미로, 같은 로봇 몸(지름 8cm, 두 바퀴), 같은 유전 알고리즘으로 센서 종류만 다른 두 무리를 동시에 진화시킵니다. 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 들어가면 성공입니다.</p>
+  <p class="sub">같은 미로, 같은 크기(지름 8cm), 같은 최고 속도, 같은 유전 알고리즘으로 센서와 움직임 방식이 다른 두 무리를 동시에 진화시킵니다. 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 들어가면 성공입니다.</p>
   <canvas id="cv" width="600" height="600" aria-label="미로와 두 무리 로봇들의 실시간 이동"></canvas>
   <div class="legend">
     <label><input type="checkbox" id="showA" checked>
@@ -59,7 +59,7 @@
       <span><b>A</b> 로봇 기준 거리 센서 5개 (왼쪽, 좌앞, 앞, 우앞, 오른쪽). 로봇이 돌면 센서도 같이 돕니다.</span></label>
     <label><input type="checkbox" id="showB" checked>
       <span class="sw"><i style="background:var(--b)"></i><i style="background:var(--b-best)"></i></span>
-      <span><b>B</b> 상하좌우 거리 센서 4개 (화면 기준으로 고정). 로봇이 돌아도 센서는 안 돕니다.</span></label>
+      <span><b>B</b> 상하좌우 거리 센서 4개 (화면 기준으로 고정). 방향이 없고, 위/아래/왼쪽/오른쪽 중 하나를 골라 같은 속도로 이동합니다.</span></label>
   </div>
   <div class="row">
     <button id="start" class="primary">시작</button>
@@ -92,21 +92,23 @@ const CFG = {
   HIDDEN: 6, POP: 100,
 };
 const STEPS = Math.round(CFG.TIME_LIMIT / CFG.DT);
-const N_OUT = 2;
 const rad = d => d * Math.PI / 180;
 
-// 비교하는 두 무리. 센서만 다르고 몸, 신경망 크기 규칙, 유전 알고리즘은 같다.
+// 비교하는 두 무리. 유전 알고리즘과 미로는 같고, 센서와 움직이는 방식이 다르다.
+//  A: 방향(헤딩)이 있는 두 바퀴 로봇. 센서는 로봇이 보는 방향 기준. 출력 = [왼쪽 바퀴, 오른쪽 바퀴]
+//  B: 방향이 없는 점. 센서는 상하좌우 고정. 출력 4개 중 최댓값 방향으로 고정 속도 이동
+const MOVE_DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // B의 이동 방향: 위, 아래, 왼쪽, 오른쪽 (화면 좌표)
 const GROUPS = [
-  { id: "A", name: "A 로봇 기준 5센서", relative: true,
+  { id: "A", name: "A 로봇 기준 5센서, 두 바퀴", relative: true, move: "wheels", nOut: 2,
     angles: [-90, -45, 0, 45, 90].map(rad),             // 로봇이 보는 방향 기준
     cDot: "--a", cBest: "--a-best", show: "showA" },
-  { id: "B", name: "B 상하좌우 4센서", relative: false,
+  { id: "B", name: "B 상하좌우 4센서, 4방향 이동", relative: false, move: "dir4", nOut: 4,
     angles: [-90, 90, 180, 0].map(rad),                 // 위, 아래, 왼쪽, 오른쪽 (화면 기준 고정)
     cDot: "--b", cBest: "--b-best", show: "showB" },
 ];
 for (const G of GROUPS) {
   G.nIn = G.angles.length;
-  G.geneLen = G.nIn * CFG.HIDDEN + CFG.HIDDEN + CFG.HIDDEN * N_OUT + N_OUT;
+  G.geneLen = G.nIn * CFG.HIDDEN + CFG.HIDDEN + CFG.HIDDEN * G.nOut + G.nOut;
 }
 const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // 상 하 좌 우 (미로 생성용)
 const OPP = [1, 0, 3, 2];
@@ -221,15 +223,16 @@ function sense(maze, x, y, th, G) {
   return G.angles.map((_, i) => senseOne(near, x, y, rayAngle(G, th, i)));
 }
 
-// ================= 신경망: 센서 -> 은닉 6(tanh) -> 바퀴 속도 2(tanh) =================
-function decode(g, nIn) {
+// ================= 신경망: 센서 -> 은닉 6(tanh) -> 출력(tanh) =================
+// 출력: A는 [왼쪽 바퀴, 오른쪽 바퀴] (-1 ~ 1), B는 [위, 아래, 왼쪽, 오른쪽] 점수
+function decode(g, nIn, nOut) {
   let k = 0;
   const H = CFG.HIDDEN;
   const w1 = g.slice(k, k += nIn * H);
   const b1 = g.slice(k, k += H);
-  const w2 = g.slice(k, k += H * N_OUT);
-  const b2 = g.slice(k, k += N_OUT);
-  return { w1, b1, w2, b2, nIn };
+  const w2 = g.slice(k, k += H * nOut);
+  const b2 = g.slice(k, k += nOut);
+  return { w1, b1, w2, b2, nIn, nOut };
 }
 function think(net, s) {
   const H = CFG.HIDDEN, h = new Array(H);
@@ -238,18 +241,18 @@ function think(net, s) {
     for (let i = 0; i < net.nIn; i++) v += s[i] * net.w1[i * H + j];
     h[j] = Math.tanh(v);
   }
-  const out = new Array(N_OUT);
-  for (let o = 0; o < N_OUT; o++) {
+  const out = new Array(net.nOut);
+  for (let o = 0; o < net.nOut; o++) {
     let v = net.b2[o];
-    for (let j = 0; j < H; j++) v += h[j] * net.w2[j * N_OUT + o];
+    for (let j = 0; j < H; j++) v += h[j] * net.w2[j * net.nOut + o];
     out[o] = Math.tanh(v);
   }
-  return out; // [왼쪽 바퀴, 오른쪽 바퀴], -1 ~ 1
+  return out;
 }
 
 // ================= 한 마리를 미로에서 달리게 한다 =================
 function run(gene, maze, G) {
-  const net = decode(gene, G.nIn), R = CFG.ROBOT_R, dt = CFG.DT;
+  const net = decode(gene, G.nIn, G.nOut), R = CFG.ROBOT_R, dt = CFG.DT;
   let x = maze.sx, y = maze.sy, th = Math.PI / 2;      // 시작: 출발 칸 가운데, 아래쪽을 봄
   const path = [[x, y, th]];
   let bumps = 0, solved = false;
@@ -258,10 +261,17 @@ function run(gene, maze, G) {
     const near = maze.near[cellOf(y, maze.n)][cellOf(x, maze.n)];
     const s = new Array(G.nIn);
     for (let i = 0; i < G.nIn; i++) s[i] = senseOne(near, x, y, rayAngle(G, th, i)) / CFG.SENSOR_MAX;
-    const [l, r] = think(net, s);
-    const v = (l + r) / 2 * CFG.V_MAX;                 // 앞으로 가는 속도 cm/s
-    th += (l - r) * CFG.V_MAX / CFG.WHEEL_BASE * dt;   // 오른쪽 바퀴가 빠르면 왼쪽으로 돈다
-    x += Math.cos(th) * v * dt; y += Math.sin(th) * v * dt;
+    const out = think(net, s);
+    if (G.move === "wheels") {
+      const [l, r] = out;
+      const v = (l + r) / 2 * CFG.V_MAX;               // 앞으로 가는 속도 cm/s
+      th += (l - r) * CFG.V_MAX / CFG.WHEEL_BASE * dt; // 오른쪽 바퀴가 빠르면 왼쪽으로 돈다
+      x += Math.cos(th) * v * dt; y += Math.sin(th) * v * dt;
+    } else {                                           // 4방향 중 최댓값 방향으로 고정 속도 이동 (방향 없음)
+      let best = 0;
+      for (let o = 1; o < 4; o++) if (out[o] > out[best]) best = o;
+      x += MOVE_DIRS[best][0] * CFG.V_MAX * dt; y += MOVE_DIRS[best][1] * CFG.V_MAX * dt;
+    }
     let hit = false;                                   // 벽과 겹치면 밀어낸다 (미끄러짐)
     for (let it = 0; it < 2; it++)
       for (const sg of near) {
@@ -409,9 +419,11 @@ function render() {
     ctx.globalAlpha = 1;
     disc(bx, by, CFG.ROBOT_R * 1.15, css("--floor"));       // 테두리 효과
     disc(bx, by, CFG.ROBOT_R, css(G.cBest));
-    ctx.strokeStyle = css("--floor"); ctx.lineWidth = 2; ctx.beginPath();   // 로봇이 보는 방향 표시
-    ctx.moveTo(X(bx), Y(by));
-    ctx.lineTo(X(bx + Math.cos(bth) * CFG.ROBOT_R), Y(by + Math.sin(bth) * CFG.ROBOT_R)); ctx.stroke();
+    if (G.relative) {                                                       // 방향이 있는 로봇(A)만 보는 방향 표시
+      ctx.strokeStyle = css("--floor"); ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(X(bx), Y(by));
+      ctx.lineTo(X(bx + Math.cos(bth) * CFG.ROBOT_R), Y(by + Math.sin(bth) * CFG.ROBOT_R)); ctx.stroke();
+    }
     ctx.fillStyle = css("--floor"); ctx.font = "bold 12px system-ui, sans-serif";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(G.id, X(bx), Y(by) - 0.5);
@@ -475,11 +487,13 @@ document.getElementById("seed").onchange = init;
 GROUPS.forEach(G => { document.getElementById(G.show).onchange = render; });
 document.getElementById("export").onclick = () => {
   const data = {
-    description: "센서 -> 은닉(tanh) -> [왼쪽 바퀴, 오른쪽 바퀴](tanh). w1[i*hidden+j], w2[j*outputs+o] 순서. 거리는 SENSOR_MAX로 나눈 0~1 값",
-    sensor_max_cm: CFG.SENSOR_MAX, hidden: CFG.HIDDEN, outputs: N_OUT,
-    wheel_max_cm_s: CFG.V_MAX, wheel_base_cm: CFG.WHEEL_BASE, generation: gen,
+    description: "센서 -> 은닉(tanh) -> 출력(tanh). w1[i*hidden+j], w2[j*outputs+o] 순서. 거리는 SENSOR_MAX로 나눈 0~1 값. " +
+      "A 출력=[왼쪽 바퀴, 오른쪽 바퀴], B 출력=[위, 아래, 왼쪽, 오른쪽] 중 최댓값 방향으로 이동",
+    sensor_max_cm: CFG.SENSOR_MAX, hidden: CFG.HIDDEN,
+    speed_max_cm_s: CFG.V_MAX, wheel_base_cm: CFG.WHEEL_BASE, generation: gen,
     groups: GROUPS.map(G => ({
       id: G.id, name: G.name, sensors_deg: G.angles.map(a => Math.round(a * 180 / Math.PI)),
+      outputs: G.nOut, move: G.move,
       sensors_rotate_with_robot: G.relative, fitness_cm: Number(G.runs[0].f.toFixed(2)),
       genome: G.pop[G.runs[0].i].map(v => Number(v.toFixed(5))),
     })),
