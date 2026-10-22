@@ -51,6 +51,7 @@
   textarea { width: 100%; box-sizing: border-box; height: 8em; resize: vertical; }
   h2 { font-size: 1rem; margin: 6px 0 0; }
   .note { margin: 0; font-size: .85rem; color: var(--muted); }
+  [hidden] { display: none !important; }
   .nn { display: grid; gap: 6px; }
   .nn p { margin: 0; min-width: 0; }
   .nn .ttl { display: flex; gap: 8px; align-items: center; font-weight: 600; font-size: .92rem; }
@@ -65,6 +66,9 @@
   <div class="preset">
     <label for="preset" class="ctl">방식 <select id="preset"></select></label>
     <dl class="parts" id="presetParts"></dl>
+  </div>
+  <div class="row" id="bumpRow" hidden>
+    <label for="bump" class="ctl">충돌 감점 <input id="bump" type="range" min="0" max="1" step="0.05" value="0.2"><output id="bumpVal"></output></label>
   </div>
   <div class="row">
     <button id="start" class="primary">시작</button>
@@ -113,10 +117,15 @@ const rad = d => d * Math.PI / 180;
 //  rngOffset: 처음 난수 유전자를 만드는 난수열 번호. 예전 결과를 그대로 재현하려고 항목마다 고정한다.
 const MOVE_DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // 4방향 이동: 위, 아래, 왼쪽, 오른쪽 (화면 좌표)
 const PART_EVAL = "적합도 = 마지막 위치와 목표 칸 가운데 사이 직선거리(cm)의 음수. 충돌 벌점 없음. 미로 하나로만 평가.";
+const partEvalBump = pen => `적합도 = -(마지막 위치와 목표 칸 가운데 사이 직선거리 cm) - ${pen} × (벽에 부딪힌 제어 횟수). 미로 하나로만 평가.`;
 const PART_EVOL = "상위 20%를 부모로, 한 점 교차, 돌연변이 5%(크기 0.5), 개체 100마리.";
 const PRESETS = [
   { key: "s2", id: "A", stage: "단계 2", label: "A · 단계 2: 로봇 기준 5센서 + 두 바퀴",
     parts: { 개체: "거리 센서 5개(왼쪽, 좌앞, 앞, 우앞, 오른쪽)가 로봇이 보는 방향 기준으로 돕니다. 출력은 왼쪽/오른쪽 바퀴 속도 2개.", 평가: PART_EVAL, 진화: PART_EVOL },
+    sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
+    angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
+  { key: "s4", id: "A+", stage: "단계 4", label: "A+ · 단계 4: A + 벽 충돌 감점", tunable: true, bumpPenalty: 0.2,
+    parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 처음 난수 유전자는 A와 같음." },
     sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
     angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
   { key: "s3b", id: "B", stage: "단계 3-2", label: "B · 단계 3-2: 상하좌우 4센서 + 4방향 이동",
@@ -130,6 +139,7 @@ const PRESETS = [
 ];
 function makeGroup(P) {                       // 선택한 방식으로 한 무리를 만든다
   const G = { ...P, name: P.label };
+  G.bumpPenalty = P.tunable ? Number(bumpEl.value) : (P.bumpPenalty || 0);   // 충돌 감점 (cm/번)
   G.mark = P.id.slice(0, 1);
   G.nIn = G.angles.length;
   G.geneLen = G.nIn * CFG.HIDDEN + CFG.HIDDEN + CFG.HIDDEN * G.nOut + G.nOut;
@@ -318,9 +328,10 @@ function run(gene, maze, G) {
 }
 
 // 적합도 = -(마지막 위치와 목표 칸 가운데 사이의 직선거리 cm)
-const fitnessOf = (res, maze) => {
+// 적합도 = -(최종 거리) - (충돌 감점 × 벽에 부딪힌 제어 횟수). 감점이 0인 방식은 예전과 똑같이 계산된다.
+const finalDist = (res, maze) => {
   const [x, y] = res.path[res.path.length - 1];
-  return -Math.hypot(x - maze.gx, y - maze.gy);
+  return Math.hypot(x - maze.gx, y - maze.gy);
 };
 
 // ================= 유전 알고리즘 + 실시간 애니메이션 =================
@@ -328,6 +339,7 @@ const fitnessOf = (res, maze) => {
 let maze, gen, t, acc, holdLeft, running = false, last = 0;
 const speedEl = document.getElementById("speed");
 const presetEl = document.getElementById("preset");
+const bumpEl = document.getElementById("bump");
 presetEl.innerHTML = PRESETS.map(p => `<option value="${p.key}">${p.label}</option>`).join("");
 
 function init() {
@@ -342,7 +354,11 @@ function init() {
       Array.from({ length: G.geneLen }, () => G.rnd.normal())); // 처음엔 완전 난수
     G.hist = [];
   });
-  document.getElementById("presetParts").innerHTML = Object.entries(P.parts)
+  const parts = { ...P.parts };
+  if (P.tunable) parts.평가 = partEvalBump(GROUPS[0].bumpPenalty);
+  document.getElementById("bumpRow").hidden = !P.tunable;
+  document.getElementById("bumpVal").textContent = GROUPS[0].bumpPenalty.toFixed(2) + " cm / 번";
+  document.getElementById("presetParts").innerHTML = Object.entries(parts)
     .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
   gen = 0;
   beginGeneration();
@@ -353,11 +369,12 @@ function beginGeneration() {
   for (const G of GROUPS) {
     G.runs = G.pop.map((g, i) => {
       const res = run(g, maze, G);
-      return { i, ...res, f: fitnessOf(res, maze) };
+      const d = finalDist(res, maze);
+      return { i, ...res, d, f: -d - G.bumpPenalty * res.bumps };
     });
     G.runs.sort((a, b) => b.f - a.f);                  // runs[0] = 이번 세대 최고 개체
     G.hist[gen] = {
-      best: G.runs[0].f,
+      best: G.runs[0].f, dist: G.runs[0].d, bumps: G.runs[0].bumps,
       solved: G.runs.filter(x => x.solved).length,
     };
   }
@@ -467,9 +484,11 @@ function render() {
   const line = G => {
     const mean = G.runs.reduce((a, x) => a + x.f, 0) / P;
     const solved = done ? G.runs.filter(x => x.solved).length : "?";
+    const b = G.runs[0];
     return `[${G.name}]\n` +
-      `  최고 ${G.runs[0].f.toFixed(0)}cm  평균 ${mean.toFixed(0)}cm  도착 ${solved}/${P}  ` +
-      `최고 개체 벽 충돌 ${G.runs[0].bumps}번`;
+      `  최고 적합도 ${b.f.toFixed(0)}  평균 ${mean.toFixed(0)}  도착 ${solved}/${P}\n` +
+      `  최고 개체: 목표까지 ${b.d.toFixed(0)}cm, 벽 충돌 ${b.bumps}번` +
+      (G.bumpPenalty ? ` (감점 ${(G.bumpPenalty * b.bumps).toFixed(0)})` : "");
   };
   document.getElementById("info").textContent =
     `세대 ${gen}   시간 ${(Math.min(t, STEPS) * CFG.DT).toFixed(1)} / ${CFG.TIME_LIMIT}초\n` +
@@ -582,7 +601,8 @@ document.getElementById("start").onclick = () => { running = true; };
 document.getElementById("pause").onclick = () => { running = false; };
 document.getElementById("reset").onclick = init;
 document.getElementById("seed").onchange = init;
-presetEl.onchange = init;                      // 방식을 바꾸면 처음부터 다시 시작 (같은 시드의 같은 미로)
+bumpEl.onchange = init;                        // 감점 크기를 바꾸면 처음부터 다시 시작
+presetEl.onchange = init;                    // 방식을 바꾸면 처음부터 다시 시작 (같은 시드의 같은 미로)
 document.getElementById("export").onclick = () => {
   const data = {
     description: "센서 -> 은닉(tanh) -> 출력(tanh). w1[i*hidden+j], w2[j*outputs+o] 순서. 거리는 SENSOR_MAX로 나눈 0~1 값. " +
