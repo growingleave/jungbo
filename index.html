@@ -5,20 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>유전 로보틱스 미로</title>
 <style>
-  /* 레이아웃: 미로 캔버스가 주인공, 조작 버튼과 수치는 아래에 한 줄씩 */
+  /* 레이아웃: 미로 캔버스가 주인공, 그 아래에 범례, 조작, 수치, 비교 그래프 순서 */
   :root {
     --bg: #f3f5f8; --fg: #1c2330; --muted: #5d6879; --panel: #ffffff; --line: #d3d9e2;
-    --floor: #ffffff; --wall: #2b3445; --start: #2f9e5b; --goal: #d6336c; --path: #2f6bff;
-    --btn: #2f6bff; --btn-fg: #ffffff; --best: #e8590c;
+    --floor: #ffffff; --wall: #2b3445; --start: #2f9e5b; --goal: #d6336c;
+    --a: #2f6bff; --a-best: #e8590c; --b: #9c36b5; --b-best: #0c8599;
+    --btn: #2f6bff; --btn-fg: #ffffff;
   }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
     --bg: #12161d; --fg: #e4e9f1; --muted: #98a3b5; --panel: #1b212c; --line: #323b4a;
-    --floor: #1b212c; --wall: #aab4c6; --start: #4cc27f; --goal: #ff6b9a; --path: #6f9bff;
-    --btn: #6f9bff; --btn-fg: #101520; --best: #ffa94d; color-scheme: dark; } }
+    --floor: #1b212c; --wall: #aab4c6; --start: #4cc27f; --goal: #ff6b9a;
+    --a: #6f9bff; --a-best: #ffa94d; --b: #d0a2e8; --b-best: #3bc9db;
+    --btn: #6f9bff; --btn-fg: #101520; color-scheme: dark; } }
   :root[data-theme="dark"] {
     --bg: #12161d; --fg: #e4e9f1; --muted: #98a3b5; --panel: #1b212c; --line: #323b4a;
-    --floor: #1b212c; --wall: #aab4c6; --start: #4cc27f; --goal: #ff6b9a; --path: #6f9bff;
-    --btn: #6f9bff; --btn-fg: #101520; --best: #ffa94d; color-scheme: dark; }
+    --floor: #1b212c; --wall: #aab4c6; --start: #4cc27f; --goal: #ff6b9a;
+    --a: #6f9bff; --a-best: #ffa94d; --b: #d0a2e8; --b-best: #3bc9db;
+    --btn: #6f9bff; --btn-fg: #101520; color-scheme: dark; }
   body { background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Noto Sans KR", "Malgun Gothic", sans-serif;
     padding-block: 20px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   main { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
@@ -26,36 +29,51 @@
   .sub { margin: 0; color: var(--muted); font-size: .9rem; }
   canvas { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 6px; background: var(--floor); }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .legend { display: grid; gap: 6px; }
+  .legend label { display: flex; gap: 8px; align-items: center; color: var(--fg); font-size: .9rem; min-width: 0; }
+  .sw { display: inline-flex; gap: 3px; flex: none; }
+  .sw i { width: 14px; height: 14px; border-radius: 50%; display: block; }
   button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
   button.primary { background: var(--btn); color: var(--btn-fg); border-color: var(--btn); }
-  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--path); outline-offset: 2px; }
-  label { color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--a); outline-offset: 2px; }
+  label.ctl { color: var(--muted); display: flex; gap: 6px; align-items: center; }
   .right { margin-left: auto; }
-  input { font: inherit; width: 5em; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
-  input[type=range] { width: 12em; padding: 0; }
+  input[type=number] { font: inherit; width: 5em; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
+  input[type=range] { width: 12em; }
   pre, textarea { margin: 0; padding: 10px 12px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
-    font: .9rem/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; font-variant-numeric: tabular-nums; }
-  pre { min-height: 8.4em; }
+    font: .85rem/1.55 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; font-variant-numeric: tabular-nums; }
+  pre { min-height: 11em; }
   textarea { width: 100%; box-sizing: border-box; height: 8em; resize: vertical; }
+  h2 { font-size: 1rem; margin: 6px 0 0; }
   .note { margin: 0; font-size: .85rem; color: var(--muted); }
 </style>
 </head>
 <body>
 <main>
-  <h1>유전 로보틱스 미로 · 1단계 (연속 이동)</h1>
-  <p class="sub">거리 센서 5개만 가진 지름 8cm 로봇이 두 바퀴로 움직입니다. 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 들어가면 성공입니다. 파란 원은 한 세대 100마리, 주황 원은 그 세대 최고 개체이고 주황 원에서 뻗은 선이 센서입니다.</p>
-  <canvas id="cv" width="600" height="600" aria-label="미로와 로봇들의 실시간 이동"></canvas>
+  <h1>유전 로보틱스 미로 · 센서 비교</h1>
+  <p class="sub">같은 미로, 같은 로봇 몸(지름 8cm, 두 바퀴), 같은 유전 알고리즘으로 센서 종류만 다른 두 무리를 동시에 진화시킵니다. 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 들어가면 성공입니다.</p>
+  <canvas id="cv" width="600" height="600" aria-label="미로와 두 무리 로봇들의 실시간 이동"></canvas>
+  <div class="legend">
+    <label><input type="checkbox" id="showA" checked>
+      <span class="sw"><i style="background:var(--a)"></i><i style="background:var(--a-best)"></i></span>
+      <span><b>A</b> 로봇 기준 거리 센서 5개 (왼쪽, 좌앞, 앞, 우앞, 오른쪽). 로봇이 돌면 센서도 같이 돕니다.</span></label>
+    <label><input type="checkbox" id="showB" checked>
+      <span class="sw"><i style="background:var(--b)"></i><i style="background:var(--b-best)"></i></span>
+      <span><b>B</b> 상하좌우 거리 센서 4개 (화면 기준으로 고정). 로봇이 돌아도 센서는 안 돕니다.</span></label>
+  </div>
   <div class="row">
     <button id="start" class="primary">시작</button>
     <button id="pause">일시정지</button>
     <button id="reset">초기화</button>
-    <label for="seed" class="right">시드 <input id="seed" type="number" value="1"></label>
+    <label for="seed" class="ctl right">시드 <input id="seed" type="number" value="1"></label>
   </div>
   <div class="row">
-    <label for="speed">속도 <input id="speed" type="range" min="20" max="800" value="200"></label>
+    <label for="speed" class="ctl">속도 <input id="speed" type="range" min="20" max="800" value="200"></label>
     <button id="export" class="right">최고 개체 가중치 내보내기</button>
   </div>
   <pre id="info" aria-live="off"></pre>
+  <h2>세대별 최고 적합도 (0에 가까울수록 좋음)</h2>
+  <canvas id="ch" width="600" height="260" aria-label="세대별 최고 적합도 비교 그래프"></canvas>
   <textarea id="exportBox" aria-label="내보낸 가중치" readonly hidden></textarea>
   <p class="note" id="exportNote" hidden></p>
 </main>
@@ -70,14 +88,26 @@ const CFG = {
   V_MAX: 30,             // 바퀴 최대 속도 cm/s
   DT: 0.05,              // 제어 주기 s (20Hz)
   TIME_LIMIT: 40,        // 한 세대에서 로봇이 움직이는 시간 s
-  SENSOR_DEG: [-90, -45, 0, 45, 90],  // 센서 방향 (로봇 기준, 왼쪽 -> 오른쪽)
   SENSOR_MAX: 40,        // 센서가 잴 수 있는 최대 거리 cm
   HIDDEN: 6, POP: 100,
 };
 const STEPS = Math.round(CFG.TIME_LIMIT / CFG.DT);
-const N_IN = CFG.SENSOR_DEG.length, N_OUT = 2;
-const GENE_LEN = N_IN * CFG.HIDDEN + CFG.HIDDEN + CFG.HIDDEN * N_OUT + N_OUT;
-const SENSOR_RAD = CFG.SENSOR_DEG.map(d => d * Math.PI / 180);
+const N_OUT = 2;
+const rad = d => d * Math.PI / 180;
+
+// 비교하는 두 무리. 센서만 다르고 몸, 신경망 크기 규칙, 유전 알고리즘은 같다.
+const GROUPS = [
+  { id: "A", name: "A 로봇 기준 5센서", relative: true,
+    angles: [-90, -45, 0, 45, 90].map(rad),             // 로봇이 보는 방향 기준
+    cDot: "--a", cBest: "--a-best", show: "showA" },
+  { id: "B", name: "B 상하좌우 4센서", relative: false,
+    angles: [-90, 90, 180, 0].map(rad),                 // 위, 아래, 왼쪽, 오른쪽 (화면 기준 고정)
+    cDot: "--b", cBest: "--b-best", show: "showB" },
+];
+for (const G of GROUPS) {
+  G.nIn = G.angles.length;
+  G.geneLen = G.nIn * CFG.HIDDEN + CFG.HIDDEN + CFG.HIDDEN * N_OUT + N_OUT;
+}
 const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // 상 하 좌 우 (미로 생성용)
 const OPP = [1, 0, 3, 2];
 
@@ -184,26 +214,28 @@ function senseOne(near, x, y, ang) {
   }
   return best;
 }
-function sense(maze, x, y, th) {
+// A는 로봇이 보는 방향(th)을 기준으로, B는 th를 무시하고 화면 기준으로 광선을 쏜다
+const rayAngle = (G, th, i) => (G.relative ? th : 0) + G.angles[i];
+function sense(maze, x, y, th, G) {
   const near = maze.near[cellOf(y, maze.n)][cellOf(x, maze.n)];
-  return SENSOR_RAD.map(a => senseOne(near, x, y, th + a));
+  return G.angles.map((_, i) => senseOne(near, x, y, rayAngle(G, th, i)));
 }
 
-// ================= 신경망: 센서 5 -> 은닉 6(tanh) -> 바퀴 속도 2(tanh) =================
-function decode(g) {
+// ================= 신경망: 센서 -> 은닉 6(tanh) -> 바퀴 속도 2(tanh) =================
+function decode(g, nIn) {
   let k = 0;
   const H = CFG.HIDDEN;
-  const w1 = g.slice(k, k += N_IN * H);
+  const w1 = g.slice(k, k += nIn * H);
   const b1 = g.slice(k, k += H);
   const w2 = g.slice(k, k += H * N_OUT);
   const b2 = g.slice(k, k += N_OUT);
-  return { w1, b1, w2, b2 };
+  return { w1, b1, w2, b2, nIn };
 }
 function think(net, s) {
   const H = CFG.HIDDEN, h = new Array(H);
   for (let j = 0; j < H; j++) {
     let v = net.b1[j];
-    for (let i = 0; i < N_IN; i++) v += s[i] * net.w1[i * H + j];
+    for (let i = 0; i < net.nIn; i++) v += s[i] * net.w1[i * H + j];
     h[j] = Math.tanh(v);
   }
   const out = new Array(N_OUT);
@@ -216,15 +248,16 @@ function think(net, s) {
 }
 
 // ================= 한 마리를 미로에서 달리게 한다 =================
-function run(gene, maze) {
-  const net = decode(gene), R = CFG.ROBOT_R, dt = CFG.DT;
+function run(gene, maze, G) {
+  const net = decode(gene, G.nIn), R = CFG.ROBOT_R, dt = CFG.DT;
   let x = maze.sx, y = maze.sy, th = Math.PI / 2;      // 시작: 출발 칸 가운데, 아래쪽을 봄
   const path = [[x, y, th]];
   let bumps = 0, solved = false;
   for (let k = 0; k < STEPS; k++) {
     if (inGoal(maze, x, y)) { solved = true; break; }  // 목표 칸에 들어오면 멈춘다
     const near = maze.near[cellOf(y, maze.n)][cellOf(x, maze.n)];
-    const s = SENSOR_RAD.map(a => senseOne(near, x, y, th + a) / CFG.SENSOR_MAX);
+    const s = new Array(G.nIn);
+    for (let i = 0; i < G.nIn; i++) s[i] = senseOne(near, x, y, rayAngle(G, th, i)) / CFG.SENSOR_MAX;
     const [l, r] = think(net, s);
     const v = (l + r) / 2 * CFG.V_MAX;                 // 앞으로 가는 속도 cm/s
     th += (l - r) * CFG.V_MAX / CFG.WHEEL_BASE * dt;   // 오른쪽 바퀴가 빠르면 왼쪽으로 돈다
@@ -254,43 +287,55 @@ const fitnessOf = (res, maze) => {
 };
 
 // ================= 유전 알고리즘 + 실시간 애니메이션 =================
-// 한 세대 = 모든 개체가 동시에 출발해 TIME_LIMIT 초 동안 움직임 -> 점수 -> 다음 세대 생성
-let rnd, maze, pop, gen, runs, t, acc, holdLeft, running = false, last = 0;
+// 한 세대 = 두 무리가 같은 미로에서 동시에 출발해 TIME_LIMIT 초 동안 움직임 -> 점수 -> 다음 세대 생성
+let maze, gen, t, acc, holdLeft, running = false, last = 0;
 const speedEl = document.getElementById("speed");
 
 function init() {
   running = false;
-  rnd = makeRng(Number(document.getElementById("seed").value));
-  maze = makeMaze(CFG.N, rnd);
-  pop = Array.from({ length: CFG.POP }, () =>
-    Array.from({ length: GENE_LEN }, () => rnd.normal())); // 처음엔 완전 난수
+  const seed = Number(document.getElementById("seed").value);
+  maze = makeMaze(CFG.N, makeRng(seed));
+  GROUPS.forEach((G, gi) => {
+    G.rnd = makeRng(seed * 1000 + 17 + gi * 7919);       // 무리마다 독립된 난수열 (같은 시드면 항상 같은 결과)
+    G.pop = Array.from({ length: CFG.POP }, () =>
+      Array.from({ length: G.geneLen }, () => G.rnd.normal())); // 처음엔 완전 난수
+    G.hist = [];
+  });
   gen = 0;
   beginGeneration();
   render();
 }
 
 function beginGeneration() {
-  runs = pop.map((g, i) => {
-    const res = run(g, maze);
-    return { i, ...res, f: fitnessOf(res, maze) };
-  });
-  runs.sort((a, b) => b.f - a.f);                  // runs[0] = 이번 세대 최고 개체
+  for (const G of GROUPS) {
+    G.runs = G.pop.map((g, i) => {
+      const res = run(g, maze, G);
+      return { i, ...res, f: fitnessOf(res, maze) };
+    });
+    G.runs.sort((a, b) => b.f - a.f);                  // runs[0] = 이번 세대 최고 개체
+    G.hist[gen] = {
+      best: G.runs[0].f,
+      solved: G.runs.filter(x => x.solved).length,
+    };
+  }
   t = 0; acc = 0; holdLeft = 0;
 }
 
 function breed() {
   const P = CFG.POP;
-  const parents = runs.slice(0, P / 5).map(x => pop[x.i]); // 상위 20%
-  const next = parents.slice();
-  while (next.length < P) {
-    const a = parents[rnd.int(parents.length)], b = parents[rnd.int(parents.length)];
-    const cut = 1 + rnd.int(GENE_LEN - 1);                 // 한 점 교차
-    const child = a.slice(0, cut).concat(b.slice(cut));
-    for (let i = 0; i < GENE_LEN; i++)
-      if (rnd() < 0.05) child[i] += rnd.normal(0, 0.5);    // 돌연변이
-    next.push(child);
+  for (const G of GROUPS) {
+    const parents = G.runs.slice(0, P / 5).map(x => G.pop[x.i]); // 상위 20%
+    const next = parents.slice();
+    while (next.length < P) {
+      const a = parents[G.rnd.int(parents.length)], b = parents[G.rnd.int(parents.length)];
+      const cut = 1 + G.rnd.int(G.geneLen - 1);               // 한 점 교차
+      const child = a.slice(0, cut).concat(b.slice(cut));
+      for (let i = 0; i < G.geneLen; i++)
+        if (G.rnd() < 0.05) child[i] += G.rnd.normal(0, 0.5); // 돌연변이
+      next.push(child);
+    }
+    G.pop = next;
   }
-  pop = next;
   gen++;
   beginGeneration();
 }
@@ -313,13 +358,13 @@ function frame(now) {
 // ================= 그리기 (색은 CSS 토큰에서 읽는다) =================
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const at = (path, k) => path[Math.min(k, path.length - 1)];
+
 function render() {
   const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   const pad = 24, sc = (cv.width - 2 * pad) / (CFG.N * CFG.CELL);   // cm -> px
   const X = x => pad + x * sc, Y = y => pad + y * sc;
   ctx.fillStyle = css("--floor"); ctx.fillRect(0, 0, cv.width, cv.height);
-
-  const disc = (x, y, rad, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(x), Y(y), rad * sc, 0, 7); ctx.fill(); };
+  const disc = (x, y, r, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(x), Y(y), r * sc, 0, 7); ctx.fill(); };
 
   ctx.strokeStyle = css("--wall"); ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.beginPath();
   for (const s of maze.segs) {
@@ -327,48 +372,99 @@ function render() {
     ctx.moveTo(X(s.a[0]), Y(s.a[1])); ctx.lineTo(X(s.b[0]), Y(s.b[1]));
   }
   ctx.stroke();
-
   disc(maze.sx, maze.sy, CFG.CELL * 0.22, css("--start"));
   disc(maze.gx, maze.gy, CFG.CELL * 0.22, css("--goal"));
 
-  const best = runs[0];
-  const upto = Math.min(t, best.path.length - 1);
-  ctx.strokeStyle = css("--best"); ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.globalAlpha = 0.5; ctx.beginPath();
-  for (let k = 0; k <= upto; k++) {
-    const [x, y] = best.path[k];
-    k ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y));
+  const shown = GROUPS.filter(G => document.getElementById(G.show).checked);
+
+  // 1) 각 무리 최고 개체의 지나온 길
+  for (const G of shown) {
+    const best = G.runs[0], upto = Math.min(t, best.path.length - 1);
+    ctx.strokeStyle = css(G.cBest); ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.globalAlpha = 0.5; ctx.beginPath();
+    for (let k = 0; k <= upto; k++) {
+      const [x, y] = best.path[k];
+      k ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y));
+    }
+    ctx.stroke();
   }
-  ctx.stroke();
-
-  ctx.globalAlpha = 0.3;
-  for (let k = runs.length - 1; k >= 1; k--) {
-    const [x, y] = at(runs[k].path, t);
-    disc(x, y, CFG.ROBOT_R, css("--path"));
+  // 2) 나머지 개체들
+  ctx.globalAlpha = 0.28;
+  for (const G of shown)
+    for (let k = G.runs.length - 1; k >= 1; k--) {
+      const [x, y] = at(G.runs[k].path, t);
+      disc(x, y, CFG.ROBOT_R, css(G.cDot));
+    }
+  ctx.globalAlpha = 1;
+  // 3) 최고 개체: 센서 광선, 몸, 글자(A/B)
+  for (const G of shown) {
+    const [bx, by, bth] = at(G.runs[0].path, t);
+    const ranges = sense(maze, bx, by, bth, G);
+    ctx.strokeStyle = css(G.cBest); ctx.lineWidth = 1.2; ctx.globalAlpha = 0.85;
+    G.angles.forEach((_, i) => {
+      const a = rayAngle(G, bth, i);
+      const ex = bx + Math.cos(a) * ranges[i], ey = by + Math.sin(a) * ranges[i];
+      ctx.beginPath(); ctx.moveTo(X(bx), Y(by)); ctx.lineTo(X(ex), Y(ey)); ctx.stroke();
+      disc(ex, ey, 0.8, css(G.cBest));
+    });
+    ctx.globalAlpha = 1;
+    disc(bx, by, CFG.ROBOT_R * 1.15, css("--floor"));       // 테두리 효과
+    disc(bx, by, CFG.ROBOT_R, css(G.cBest));
+    ctx.strokeStyle = css("--floor"); ctx.lineWidth = 2; ctx.beginPath();   // 로봇이 보는 방향 표시
+    ctx.moveTo(X(bx), Y(by));
+    ctx.lineTo(X(bx + Math.cos(bth) * CFG.ROBOT_R), Y(by + Math.sin(bth) * CFG.ROBOT_R)); ctx.stroke();
+    ctx.fillStyle = css("--floor"); ctx.font = "bold 12px system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(G.id, X(bx), Y(by) - 0.5);
   }
-  ctx.globalAlpha = 1;
 
-  // 최고 개체: 센서 광선과 몸, 앞쪽 표시
-  const [bx, by, bth] = at(best.path, t);
-  const ranges = sense(maze, bx, by, bth);
-  ctx.strokeStyle = css("--muted"); ctx.lineWidth = 1; ctx.globalAlpha = 0.8;
-  SENSOR_RAD.forEach((a, i) => {
-    const ex = bx + Math.cos(bth + a) * ranges[i], ey = by + Math.sin(bth + a) * ranges[i];
-    ctx.beginPath(); ctx.moveTo(X(bx), Y(by)); ctx.lineTo(X(ex), Y(ey)); ctx.stroke();
-    disc(ex, ey, 0.8, css("--muted"));
-  });
-  ctx.globalAlpha = 1;
-  disc(bx, by, CFG.ROBOT_R, css("--best"));
-  ctx.strokeStyle = css("--bg"); ctx.lineWidth = 2; ctx.beginPath();
-  ctx.moveTo(X(bx), Y(by)); ctx.lineTo(X(bx + Math.cos(bth) * CFG.ROBOT_R), Y(by + Math.sin(bth) * CFG.ROBOT_R)); ctx.stroke();
-
-  const P = CFG.POP, mean = runs.reduce((a, x) => a + x.f, 0) / P;
-  const done = t >= STEPS, solved = runs.filter(x => x.solved).length;
+  // 수치
+  const P = CFG.POP, done = t >= STEPS;
+  const line = G => {
+    const mean = G.runs.reduce((a, x) => a + x.f, 0) / P;
+    const solved = done ? G.runs.filter(x => x.solved).length : "?";
+    return `[${G.name}]\n` +
+      `  최고 ${G.runs[0].f.toFixed(0)}cm  평균 ${mean.toFixed(0)}cm  도착 ${solved}/${P}  ` +
+      `최고 개체 벽 충돌 ${G.runs[0].bumps}번`;
+  };
   document.getElementById("info").textContent =
     `세대 ${gen}   시간 ${(Math.min(t, STEPS) * CFG.DT).toFixed(1)} / ${CFG.TIME_LIMIT}초\n` +
-    `최고 적합도 ${runs[0].f.toFixed(0)}cm  평균 ${mean.toFixed(0)}cm   (0에 가까울수록 좋음)\n` +
-    `도착한 개체 ${done ? solved : "?"}/${P} ${done ? "" : "(세대가 끝나면 집계)"}\n` +
-    `최고 개체가 벽에 부딪힌 횟수 ${best.bumps}번 (제어 ${STEPS}번 중)\n` +
+    GROUPS.map(line).join("\n") + "\n" +
     `미로 ${CFG.N}x${CFG.N}칸, 최단 경로 ${maze.shortest}칸 (${maze.shortest * CFG.CELL}cm)`;
+
+  renderChart();
+}
+
+// 세대별 최고 적합도 꺾은선 (세대가 끝난 값만 보여 준다)
+function renderChart() {
+  const cv = document.getElementById("ch"), ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height, L = 52, Rm = 14, T = 14, B = 30;
+  ctx.fillStyle = css("--floor"); ctx.fillRect(0, 0, W, H);
+  const upto = t >= STEPS ? gen : gen - 1;                       // 마지막으로 끝난 세대
+  const nMax = Math.max(10, upto);
+  let lo = -50;
+  for (const G of GROUPS) for (let g = 0; g <= upto; g++) lo = Math.min(lo, G.hist[g].best);
+  lo = Math.floor(lo / 100) * 100;                               // y축은 0 위, 가장 나쁜 값 아래
+  const px = g => L + (W - L - Rm) * g / nMax;
+  const py = v => T + (H - T - B) * (0 - v) / (0 - lo);
+  ctx.font = "11px system-ui, sans-serif"; ctx.fillStyle = css("--muted"); ctx.strokeStyle = css("--line"); ctx.lineWidth = 1;
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let v = 0; v >= lo; v -= 100) {                           // 가로 눈금: 100cm 간격
+    ctx.beginPath(); ctx.moveTo(L, py(v)); ctx.lineTo(W - Rm, py(v)); ctx.stroke();
+    ctx.fillText(v + "cm", L - 6, py(v));
+  }
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const step = nMax <= 20 ? 5 : nMax <= 60 ? 10 : 20;
+  for (let g = 0; g <= nMax; g += step) ctx.fillText(g, px(g), H - B + 8);
+  ctx.fillText("세대", (L + W - Rm) / 2, H - 14);
+  if (upto < 0) return;
+  for (const G of GROUPS) {
+    ctx.strokeStyle = css(G.cBest); ctx.lineWidth = 2.2; ctx.lineJoin = "round"; ctx.beginPath();
+    for (let g = 0; g <= upto; g++) g ? ctx.lineTo(px(g), py(G.hist[g].best)) : ctx.moveTo(px(g), py(G.hist[g].best));
+    ctx.stroke();
+    ctx.fillStyle = css(G.cBest); ctx.beginPath(); ctx.arc(px(upto), py(G.hist[upto].best), 3.5, 0, 7); ctx.fill();
+    ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+    ctx.fillText(G.id, Math.min(px(upto) + 6, W - 14), py(G.hist[upto].best) - 4);
+  }
 }
 
 // ================= 버튼 =================
@@ -376,16 +472,20 @@ document.getElementById("start").onclick = () => { running = true; };
 document.getElementById("pause").onclick = () => { running = false; };
 document.getElementById("reset").onclick = init;
 document.getElementById("seed").onchange = init;
+GROUPS.forEach(G => { document.getElementById(G.show).onchange = render; });
 document.getElementById("export").onclick = () => {
   const data = {
-    description: "센서 -> 은닉(tanh) -> [왼쪽 바퀴, 오른쪽 바퀴](tanh). w1[i*hidden+j], w2[j*outputs+o] 순서",
-    sensors_deg: CFG.SENSOR_DEG, sensor_max_cm: CFG.SENSOR_MAX,
-    hidden: CFG.HIDDEN, outputs: N_OUT, wheel_max_cm_s: CFG.V_MAX, wheel_base_cm: CFG.WHEEL_BASE,
-    generation: gen, fitness_cm: Number(runs[0].f.toFixed(2)),
-    genome: pop[runs[0].i].map(v => Number(v.toFixed(5))),
+    description: "센서 -> 은닉(tanh) -> [왼쪽 바퀴, 오른쪽 바퀴](tanh). w1[i*hidden+j], w2[j*outputs+o] 순서. 거리는 SENSOR_MAX로 나눈 0~1 값",
+    sensor_max_cm: CFG.SENSOR_MAX, hidden: CFG.HIDDEN, outputs: N_OUT,
+    wheel_max_cm_s: CFG.V_MAX, wheel_base_cm: CFG.WHEEL_BASE, generation: gen,
+    groups: GROUPS.map(G => ({
+      id: G.id, name: G.name, sensors_deg: G.angles.map(a => Math.round(a * 180 / Math.PI)),
+      sensors_rotate_with_robot: G.relative, fitness_cm: Number(G.runs[0].f.toFixed(2)),
+      genome: G.pop[G.runs[0].i].map(v => Number(v.toFixed(5))),
+    })),
   };
   const box = document.getElementById("exportBox"), note = document.getElementById("exportNote");
-  box.value = JSON.stringify(data, null, 1); box.hidden = false; box.select();
+  box.value = JSON.stringify(data); box.hidden = false; box.select();
   note.hidden = false; note.textContent = "클립보드 복사를 시도했습니다. 안 되면 위 내용을 직접 복사하세요.";
   try { navigator.clipboard.writeText(box.value).catch(() => {}); } catch (e) { /* 직접 복사 */ }
 };
