@@ -10,18 +10,18 @@
     --bg: #f3f5f8; --fg: #1c2330; --muted: #5d6879; --panel: #ffffff; --line: #d3d9e2;
     --floor: #ffffff; --wall: #2b3445; --start: #2f9e5b; --goal: #d6336c;
     --a: #2f6bff; --a-best: #e8590c; --b: #9c36b5; --b-best: #0c8599;
-    --btn: #2f6bff; --btn-fg: #ffffff;
+    --btn: #2f6bff; --btn-fg: #ffffff; --pos: #1c7ed6; --neg: #e03131;
   }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
     --bg: #12161d; --fg: #e4e9f1; --muted: #98a3b5; --panel: #1b212c; --line: #323b4a;
     --floor: #1b212c; --wall: #aab4c6; --start: #4cc27f; --goal: #ff6b9a;
     --a: #6f9bff; --a-best: #ffa94d; --b: #d0a2e8; --b-best: #3bc9db;
-    --btn: #6f9bff; --btn-fg: #101520; color-scheme: dark; } }
+    --btn: #6f9bff; --btn-fg: #101520; --pos: #74c0fc; --neg: #ff8787; color-scheme: dark; } }
   :root[data-theme="dark"] {
     --bg: #12161d; --fg: #e4e9f1; --muted: #98a3b5; --panel: #1b212c; --line: #323b4a;
     --floor: #1b212c; --wall: #aab4c6; --start: #4cc27f; --goal: #ff6b9a;
     --a: #6f9bff; --a-best: #ffa94d; --b: #d0a2e8; --b-best: #3bc9db;
-    --btn: #6f9bff; --btn-fg: #101520; color-scheme: dark; }
+    --btn: #6f9bff; --btn-fg: #101520; --pos: #74c0fc; --neg: #ff8787; color-scheme: dark; }
   body { background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Noto Sans KR", "Malgun Gothic", sans-serif;
     padding-block: 20px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   main { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
@@ -46,6 +46,10 @@
   textarea { width: 100%; box-sizing: border-box; height: 8em; resize: vertical; }
   h2 { font-size: 1rem; margin: 6px 0 0; }
   .note { margin: 0; font-size: .85rem; color: var(--muted); }
+  .nn { display: grid; gap: 6px; }
+  .nn p { margin: 0; min-width: 0; }
+  .nn .ttl { display: flex; gap: 8px; align-items: center; font-weight: 600; font-size: .92rem; }
+  .nn .txt { font: .85rem/1.5 ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -74,6 +78,18 @@
   <pre id="info" aria-live="off"></pre>
   <h2>세대별 최고 적합도 (0에 가까울수록 좋음)</h2>
   <canvas id="ch" width="600" height="260" aria-label="세대별 최고 적합도 비교 그래프"></canvas>
+  <h2>최고 개체의 머릿속 (실시간)</h2>
+  <p class="note">지금 화면에서 달리는 각 무리 최고 개체의 계산 과정입니다. 왼쪽이 센서 값, 가운데가 은닉 뉴런, 오른쪽이 출력입니다. 선의 파랑은 켜는 방향(+), 빨강은 끄는 방향(-)이고, 굵기는 이 순간 실제로 전달된 크기(입력값 × 가중치)입니다. 편향은 그리지 않았습니다.</p>
+  <section class="nn" id="nnWrapA">
+    <p class="ttl"><span class="sw"><i style="background:var(--a-best)"></i></span><span>A 로봇 기준 5센서, 두 바퀴</span></p>
+    <canvas id="nnA" width="600" height="300" aria-label="A 최고 개체의 신경망 계산"></canvas>
+    <p class="txt" id="nnTextA"></p>
+  </section>
+  <section class="nn" id="nnWrapB">
+    <p class="ttl"><span class="sw"><i style="background:var(--b-best)"></i></span><span>B 상하좌우 4센서, 4방향 이동</span></p>
+    <canvas id="nnB" width="600" height="300" aria-label="B 최고 개체의 신경망 계산"></canvas>
+    <p class="txt" id="nnTextB"></p>
+  </section>
   <textarea id="exportBox" aria-label="내보낸 가중치" readonly hidden></textarea>
   <p class="note" id="exportNote" hidden></p>
 </main>
@@ -234,7 +250,7 @@ function decode(g, nIn, nOut) {
   const b2 = g.slice(k, k += nOut);
   return { w1, b1, w2, b2, nIn, nOut };
 }
-function think(net, s) {
+function forward(net, s) {                    // 은닉 값(h)과 출력(out)을 함께 돌려준다 (화면 패널에서도 사용)
   const H = CFG.HIDDEN, h = new Array(H);
   for (let j = 0; j < H; j++) {
     let v = net.b1[j];
@@ -247,8 +263,9 @@ function think(net, s) {
     for (let j = 0; j < H; j++) v += h[j] * net.w2[j * net.nOut + o];
     out[o] = Math.tanh(v);
   }
-  return out;
+  return { h, out };
 }
+const think = (net, s) => forward(net, s).out;
 
 // ================= 한 마리를 미로에서 달리게 한다 =================
 function run(gene, maze, G) {
@@ -444,6 +461,72 @@ function render() {
     `미로 ${CFG.N}x${CFG.N}칸, 최단 경로 ${maze.shortest}칸 (${maze.shortest * CFG.CELL}cm)`;
 
   renderChart();
+  GROUPS.forEach(renderNet);
+}
+
+// 최고 개체가 지금 이 순간 계산하는 과정: 센서 -> 은닉 -> 출력
+const SENSOR_NAMES = { A: ["왼쪽", "좌앞", "앞", "우앞", "오른쪽"], B: ["위", "아래", "왼쪽", "오른쪽"] };
+const OUT_NAMES = { A: ["왼쪽 바퀴", "오른쪽 바퀴"], B: ["위", "아래", "왼쪽", "오른쪽"] };
+function renderNet(G) {
+  const wrap = document.getElementById("nnWrap" + G.id);
+  wrap.hidden = !document.getElementById(G.show).checked;
+  if (wrap.hidden) return;
+  const cv = document.getElementById("nn" + G.id), ctx = cv.getContext("2d");
+  const best = G.runs[0], [x, y, th] = at(best.path, t);
+  const cm = sense(maze, x, y, th, G), s = cm.map(v => v / CFG.SENSOR_MAX);
+  const net = decode(G.pop[best.i], G.nIn, G.nOut);
+  const { h, out } = forward(net, s), H = CFG.HIDDEN;
+
+  const W = cv.width, Ht = cv.height, top = 22, bot = 14;
+  const col = { i: 100, h: 285, o: 465 };
+  const ys = n => Array.from({ length: n }, (_, k) => top + (Ht - top - bot) * (k + 0.5) / n);
+  const yi = ys(G.nIn), yh = ys(H), yo = ys(G.nOut);
+  ctx.fillStyle = css("--floor"); ctx.fillRect(0, 0, W, Ht);
+  ctx.font = "11px system-ui, sans-serif"; ctx.textBaseline = "middle";
+  ctx.fillStyle = css("--muted"); ctx.textAlign = "center";
+  ctx.fillText("센서", col.i, 10); ctx.fillText("은닉 뉴런", col.h, 10); ctx.fillText("출력", col.o, 10);
+
+  const edge = (x1, y1, x2, y2, c) => {            // c = 이 순간 전달된 크기 (입력값 x 가중치)
+    const a = Math.abs(c);
+    ctx.strokeStyle = css(c >= 0 ? "--pos" : "--neg");
+    ctx.globalAlpha = Math.min(0.95, 0.07 + a * 0.9); ctx.lineWidth = 0.6 + Math.min(3.4, a * 3.2);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  };
+  for (let i = 0; i < G.nIn; i++) for (let j = 0; j < H; j++) edge(col.i, yi[i], col.h, yh[j], s[i] * net.w1[i * H + j]);
+  for (let j = 0; j < H; j++) for (let o = 0; o < G.nOut; o++) edge(col.h, yh[j], col.o, yo[o], h[j] * net.w2[j * G.nOut + o]);
+  ctx.globalAlpha = 1;
+
+  const node = (cx, cy, v, color, r, label) => {
+    ctx.fillStyle = css("--floor"); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
+    ctx.globalAlpha = Math.min(1, 0.12 + Math.abs(v) * 0.88); ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke();
+    if (label) { ctx.fillStyle = css("--fg"); ctx.textAlign = "center"; ctx.fillText(label, cx, cy); }
+  };
+  const sign = v => (v >= 0 ? "+" : "") + v.toFixed(2);
+  for (let i = 0; i < G.nIn; i++) {
+    node(col.i, yi[i], s[i], css(G.cBest), 11);
+    ctx.fillStyle = css("--fg"); ctx.textAlign = "right";
+    ctx.fillText(`${SENSOR_NAMES[G.id][i]} ${cm[i].toFixed(0)}cm`, col.i - 17, yi[i]);
+  }
+  for (let j = 0; j < H; j++) node(col.h, yh[j], h[j], css(h[j] >= 0 ? "--pos" : "--neg"), 15, h[j].toFixed(1));
+  for (let o = 0; o < G.nOut; o++) {
+    node(col.o, yo[o], out[o], css(out[o] >= 0 ? "--pos" : "--neg"), 11);
+    ctx.fillStyle = css("--fg"); ctx.textAlign = "left";
+    ctx.fillText(`${OUT_NAMES[G.id][o]} ${sign(out[o])}`, col.o + 17, yo[o]);
+  }
+
+  let txt;
+  if (G.move === "wheels") {
+    const sp = (out[0] + out[1]) / 2, turn = out[0] - out[1], a = Math.abs(turn);
+    const dir = a < 0.05 ? "직진" : (turn > 0 ? "오른쪽으로 " : "왼쪽으로 ") + (a < 0.3 ? "조금" : "크게") + " 회전";
+    txt = `속도 ${sp.toFixed(2)} (1이 최대)   회전 ${sign(turn)} → ${dir}`;
+  } else {
+    let b = 0;
+    for (let o = 1; o < 4; o++) if (out[o] > out[b]) b = o;
+    txt = `선택한 이동 방향: ${OUT_NAMES.B[b]}  (가장 큰 출력)`;
+  }
+  document.getElementById("nnText" + G.id).textContent = txt;
 }
 
 // 세대별 최고 적합도 꺾은선 (세대가 끝난 값만 보여 준다)
