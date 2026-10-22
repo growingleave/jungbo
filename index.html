@@ -127,6 +127,7 @@ const EXPLORE_K = 5;                           // 탐험 보상: 이 세대 수�
 const partEvalExplore = m => `기본 점수 = -(목표까지 직선거리 cm). 도착 못한 개체에게 탐험 보상 = 가중치 × Σ(칸이 목표와 가까운 정도 ÷ 그 칸을 방문한 개체 수) 을 더함. 가중치는 0에서 시작하고 가장 가까운 거리가 ${EXPLORE_K}세대 동안 3cm 넘게 좋아지지 않으면 최대 ${m}의 1/4씩 단계적으로 올라가며, 거리가 좋아지면 0으로 돌아감. 미로 하나로만 평가.`;
 const SOLVE_BONUS = 200;                      // 이동 거리 항목에서 도착한 개체에게 주는 기본 점수
 const partEvalLen = w => `도착한 개체: 점수 = ${SOLVE_BONUS} - ${w} × 이동 거리(cm), 짧게 갈수록 높음. 도착 못한 개체: -(목표까지 직선거리 cm). 충돌 감점 없음. 미로 하나로만 평가.`;
+const partEvalAll = (pen, w, m) => `도착한 개체: 점수 = ${SOLVE_BONUS} - ${w} × 이동 거리(cm) - ${pen} × 벽에 부딪힌 제어 횟수. 도착 못한 개체: -(목표까지 직선거리 cm) - ${pen} × 벽에 부딪힌 제어 횟수 + 탐험 보상. 탐험 보상 = 가중치 × Σ(칸이 목표와 가까운 정도 ÷ 그 칸을 방문한 개체 수), 가중치는 0에서 시작해 가장 가까운 거리가 ${EXPLORE_K}세대 동안 3cm 넘게 좋아지지 않으면 최대 ${m}의 1/4씩 올라가고 좋아지면 0으로 돌아감. 미로 하나로만 평가.`;
 const partEvalBoth = (pen, w) => `도착한 개체: 점수 = ${SOLVE_BONUS} - ${w} × 이동 거리(cm) - ${pen} × 벽에 부딪힌 제어 횟수. 도착 못한 개체: -(목표까지 직선거리 cm) - ${pen} × 벽에 부딪힌 제어 횟수. 미로 하나로만 평가.`;
 const partEvalBump = pen => `적합도 = -(마지막 위치와 목표 칸 가운데 사이 직선거리 cm) - ${pen} × (벽에 부딪힌 제어 횟수). 미로 하나로만 평가.`;
 const PART_EVOL = "상위 20%를 부모로, 한 점 교차, 돌연변이 5%(크기 0.5), 개체 100마리.";
@@ -148,6 +149,10 @@ const PRESETS = [
     sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
     angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
   { key: "s7", id: "A-탐험", stage: "단계 7", label: "A-탐험 · 단계 7: A + 적응형 탐험 보상", explore: true,
+    parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 처음 난수 유전자는 A와 같음." },
+    sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
+    angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
+  { key: "s8", id: "A-누적", stage: "단계 8", label: "A-누적 · 단계 8: A + 충돌 감점 + 이동 거리 + 탐험 보상", tunable: true, tunableLen: true, explore: true, bumpPenalty: 0.2, lenWeight: 0.1,
     parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 처음 난수 유전자는 A와 같음." },
     sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
     angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
@@ -373,6 +378,7 @@ const finalDist = (res, maze) => {
 let maze, gen, t, acc, holdLeft, running = false, last = 0;
 const speedEl = document.getElementById("speed");
 const presetEl = document.getElementById("preset");
+presetEl.value = "s8";                         // 처음 열면 가장 최근(누적) 방식이 선택되어 슬라이더가 모두 보인다
 const bumpEl = document.getElementById("bump");
 const lenEl = document.getElementById("len");
 const exploreEl = document.getElementById("explore");
@@ -391,7 +397,8 @@ function init() {
     G.hist = [];
   });
   const parts = { ...P.parts };
-  if (P.tunable && P.tunableLen) parts.평가 = partEvalBoth(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight);
+  if (P.tunable && P.tunableLen && P.explore) parts.평가 = partEvalAll(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight, GROUPS[0].exploreMax);
+  else if (P.tunable && P.tunableLen) parts.평가 = partEvalBoth(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight);
   else if (P.tunable) parts.평가 = partEvalBump(GROUPS[0].bumpPenalty);
   else if (P.tunableLen) parts.평가 = partEvalLen(GROUPS[0].lenWeight);
   else if (P.explore) parts.평가 = partEvalExplore(GROUPS[0].exploreMax);
