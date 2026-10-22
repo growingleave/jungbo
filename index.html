@@ -29,8 +29,13 @@
   .sub { margin: 0; color: var(--muted); font-size: .9rem; }
   canvas { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 6px; background: var(--floor); }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .legend { display: grid; gap: 6px; }
-  .legend label { display: flex; gap: 8px; align-items: center; color: var(--fg); font-size: .9rem; min-width: 0; }
+  .preset { display: grid; gap: 6px; }
+  .preset label { color: var(--fg); font-weight: 600; flex-wrap: wrap; }
+  select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); min-width: 0; max-width: 100%; }
+  select:focus-visible { outline: 2px solid var(--a); outline-offset: 2px; }
+  .parts { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: .85rem; }
+  .parts dt { color: var(--muted); }
+  .parts dd { margin: 0; min-width: 0; }
   .sw { display: inline-flex; gap: 3px; flex: none; }
   .sw i { width: 14px; height: 14px; border-radius: 50%; display: block; }
   button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
@@ -54,16 +59,12 @@
 </head>
 <body>
 <main>
-  <h1>유전 로보틱스 미로 · 센서 비교</h1>
-  <p class="sub">같은 미로, 같은 크기(지름 8cm), 같은 최고 속도, 같은 유전 알고리즘으로 센서와 움직임 방식이 다른 두 무리를 동시에 진화시킵니다. 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 들어가면 성공입니다.</p>
-  <canvas id="cv" width="600" height="600" aria-label="미로와 두 무리 로봇들의 실시간 이동"></canvas>
-  <div class="legend">
-    <label><input type="checkbox" id="showA" checked>
-      <span class="sw"><i style="background:var(--a)"></i><i style="background:var(--a-best)"></i></span>
-      <span><b>A</b> 로봇 기준 거리 센서 5개 (왼쪽, 좌앞, 앞, 우앞, 오른쪽). 로봇이 돌면 센서도 같이 돕니다.</span></label>
-    <label><input type="checkbox" id="showB" checked>
-      <span class="sw"><i style="background:var(--b)"></i><i style="background:var(--b-best)"></i></span>
-      <span><b>B</b> 상하좌우 거리 센서 4개 (화면 기준으로 고정). 방향이 없고, 위/아래/왼쪽/오른쪽 중 하나를 골라 같은 속도로 이동합니다.</span></label>
+  <h1>유전 로보틱스 미로 · 방식별 실험</h1>
+  <p class="sub">알고리즘 방식을 골라 한 번에 하나씩 진화시킵니다. 같은 시드면 같은 미로와 같은 출발 상태라서 방식끼리 비교할 수 있습니다. 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 들어가면 성공입니다.</p>
+  <canvas id="cv" width="600" height="600" aria-label="미로와 로봇들의 실시간 이동"></canvas>
+  <div class="preset">
+    <label for="preset" class="ctl">방식 <select id="preset"></select></label>
+    <dl class="parts" id="presetParts"></dl>
   </div>
   <div class="row">
     <button id="start" class="primary">시작</button>
@@ -79,16 +80,11 @@
   <h2>세대별 최고 적합도 (0에 가까울수록 좋음)</h2>
   <canvas id="ch" width="600" height="260" aria-label="세대별 최고 적합도 비교 그래프"></canvas>
   <h2>최고 개체의 머릿속 (실시간)</h2>
-  <p class="note">지금 화면에서 달리는 각 무리 최고 개체의 계산 과정입니다. 왼쪽이 센서 값, 가운데가 은닉 뉴런, 오른쪽이 출력입니다. 선의 파랑은 켜는 방향(+), 빨강은 끄는 방향(-)이고, 굵기는 이 순간 실제로 전달된 크기(입력값 × 가중치)입니다. 편향은 그리지 않았습니다.</p>
-  <section class="nn" id="nnWrapA">
-    <p class="ttl"><span class="sw"><i style="background:var(--a-best)"></i></span><span>A 로봇 기준 5센서, 두 바퀴</span></p>
-    <canvas id="nnA" width="600" height="300" aria-label="A 최고 개체의 신경망 계산"></canvas>
-    <p class="txt" id="nnTextA"></p>
-  </section>
-  <section class="nn" id="nnWrapB">
-    <p class="ttl"><span class="sw"><i style="background:var(--b-best)"></i></span><span>B 상하좌우 4센서, 4방향 이동</span></p>
-    <canvas id="nnB" width="600" height="300" aria-label="B 최고 개체의 신경망 계산"></canvas>
-    <p class="txt" id="nnTextB"></p>
+  <p class="note">지금 화면에서 달리는 최고 개체의 계산 과정입니다. 왼쪽이 센서 값, 가운데가 은닉 뉴런, 오른쪽이 출력입니다. 선의 파랑은 켜는 방향(+), 빨강은 끄는 방향(-)이고, 굵기는 이 순간 실제로 전달된 크기(입력값 × 가중치)입니다. 편향은 그리지 않았습니다.</p>
+  <section class="nn" id="nnWrap">
+    <p class="ttl"><span class="sw"><i id="nnSwatch" style="background:var(--a-best)"></i></span><span id="nnTitle"></span></p>
+    <canvas id="nn" width="600" height="300" aria-label="최고 개체의 신경망 계산"></canvas>
+    <p class="txt" id="nnText"></p>
   </section>
   <textarea id="exportBox" aria-label="내보낸 가중치" readonly hidden></textarea>
   <p class="note" id="exportNote" hidden></p>
@@ -110,22 +106,36 @@ const CFG = {
 const STEPS = Math.round(CFG.TIME_LIMIT / CFG.DT);
 const rad = d => d * Math.PI / 180;
 
-// 비교하는 두 무리. 유전 알고리즘과 미로는 같고, 센서와 움직이는 방식이 다르다.
-//  A: 방향(헤딩)이 있는 두 바퀴 로봇. 센서는 로봇이 보는 방향 기준. 출력 = [왼쪽 바퀴, 오른쪽 바퀴]
-//  B: 방향이 없는 점. 센서는 상하좌우 고정. 출력 4개 중 최댓값 방향으로 고정 속도 이동
-const MOVE_DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // B의 이동 방향: 위, 아래, 왼쪽, 오른쪽 (화면 좌표)
-const GROUPS = [
-  { id: "A", name: "A 로봇 기준 5센서, 두 바퀴", relative: true, move: "wheels", nOut: 2,
-    angles: [-90, -45, 0, 45, 90].map(rad),             // 로봇이 보는 방향 기준
-    cDot: "--a", cBest: "--a-best", show: "showA" },
-  { id: "B", name: "B 상하좌우 4센서, 4방향 이동", relative: false, move: "dir4", nOut: 4,
-    angles: [-90, 90, 180, 0].map(rad),                 // 위, 아래, 왼쪽, 오른쪽 (화면 기준 고정)
-    cDot: "--b", cBest: "--b-best", show: "showB" },
+// ================= 방식(프리셋) 목록 =================
+// 알고리즘을 개선할 때마다 여기에 항목을 하나 추가한다. 이전 항목은 고치지 않는다(같은 시드면 같은 결과가 재현되어야 함).
+// 항목은 알고리즘 3파트(개체 / 평가 / 진화)별로 무엇이 다른지 적는다.
+//  개체: 센서, 신경망 출력, 움직임   평가: 미로와 적합도   진화: 선택, 교차, 돌연변이
+//  rngOffset: 처음 난수 유전자를 만드는 난수열 번호. 예전 결과를 그대로 재현하려고 항목마다 고정한다.
+const MOVE_DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // 4방향 이동: 위, 아래, 왼쪽, 오른쪽 (화면 좌표)
+const PART_EVAL = "적합도 = 마지막 위치와 목표 칸 가운데 사이 직선거리(cm)의 음수. 충돌 벌점 없음. 미로 하나로만 평가.";
+const PART_EVOL = "상위 20%를 부모로, 한 점 교차, 돌연변이 5%(크기 0.5), 개체 100마리.";
+const PRESETS = [
+  { key: "s2", id: "A", stage: "단계 2", label: "A · 단계 2: 로봇 기준 5센서 + 두 바퀴",
+    parts: { 개체: "거리 센서 5개(왼쪽, 좌앞, 앞, 우앞, 오른쪽)가 로봇이 보는 방향 기준으로 돕니다. 출력은 왼쪽/오른쪽 바퀴 속도 2개.", 평가: PART_EVAL, 진화: PART_EVOL },
+    sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
+    angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
+  { key: "s3b", id: "B", stage: "단계 3-2", label: "B · 단계 3-2: 상하좌우 4센서 + 4방향 이동",
+    parts: { 개체: "거리 센서 4개(위, 아래, 왼쪽, 오른쪽)가 화면 기준으로 고정. 방향(헤딩)이 없고, 출력 4개 중 최댓값 방향으로 30cm/s 이동.", 평가: PART_EVAL, 진화: PART_EVOL },
+    sensorSet: "abs", relative: false, move: "dir4", nOut: 4,
+    angles: [-90, 90, 180, 0].map(rad), rngOffset: 7919, cDot: "--b", cBest: "--b-best" },
+  { key: "s3a", id: "B′", stage: "단계 3-1", label: "B′ · 단계 3-1(참고): 상하좌우 4센서 + 두 바퀴",
+    parts: { 개체: "센서는 B와 같은 화면 고정 4개인데 움직임은 로봇 기준 두 바퀴. 센서와 몸의 기준이 어긋난 조건이라 센서 우열 비교에는 쓰지 않음.", 평가: PART_EVAL, 진화: PART_EVOL },
+    sensorSet: "abs", relative: false, move: "wheels", nOut: 2,
+    angles: [-90, 90, 180, 0].map(rad), rngOffset: 7919, cDot: "--b", cBest: "--b-best" },
 ];
-for (const G of GROUPS) {
+function makeGroup(P) {                       // 선택한 방식으로 한 무리를 만든다
+  const G = { ...P, name: P.label };
+  G.mark = P.id.slice(0, 1);
   G.nIn = G.angles.length;
   G.geneLen = G.nIn * CFG.HIDDEN + CFG.HIDDEN + CFG.HIDDEN * G.nOut + G.nOut;
+  return G;
 }
+let GROUPS = [];                              // 지금 실행 중인 방식 하나 (코드는 여러 무리도 다룰 수 있게 배열로 둠)
 const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // 상 하 좌 우 (미로 생성용)
 const OPP = [1, 0, 3, 2];
 
@@ -317,17 +327,23 @@ const fitnessOf = (res, maze) => {
 // 한 세대 = 두 무리가 같은 미로에서 동시에 출발해 TIME_LIMIT 초 동안 움직임 -> 점수 -> 다음 세대 생성
 let maze, gen, t, acc, holdLeft, running = false, last = 0;
 const speedEl = document.getElementById("speed");
+const presetEl = document.getElementById("preset");
+presetEl.innerHTML = PRESETS.map(p => `<option value="${p.key}">${p.label}</option>`).join("");
 
 function init() {
   running = false;
   const seed = Number(document.getElementById("seed").value);
   maze = makeMaze(CFG.N, makeRng(seed));
-  GROUPS.forEach((G, gi) => {
-    G.rnd = makeRng(seed * 1000 + 17 + gi * 7919);       // 무리마다 독립된 난수열 (같은 시드면 항상 같은 결과)
+  const P = PRESETS.find(p => p.key === presetEl.value) || PRESETS[0];
+  GROUPS = [makeGroup(P)];
+  GROUPS.forEach(G => {
+    G.rnd = makeRng(seed * 1000 + 17 + G.rngOffset);     // 방식마다 고정된 난수열 (같은 시드면 항상 같은 결과)
     G.pop = Array.from({ length: CFG.POP }, () =>
       Array.from({ length: G.geneLen }, () => G.rnd.normal())); // 처음엔 완전 난수
     G.hist = [];
   });
+  document.getElementById("presetParts").innerHTML = Object.entries(P.parts)
+    .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
   gen = 0;
   beginGeneration();
   render();
@@ -402,7 +418,7 @@ function render() {
   disc(maze.sx, maze.sy, CFG.CELL * 0.22, css("--start"));
   disc(maze.gx, maze.gy, CFG.CELL * 0.22, css("--goal"));
 
-  const shown = GROUPS.filter(G => document.getElementById(G.show).checked);
+  const shown = GROUPS;
 
   // 1) 각 무리 최고 개체의 지나온 길
   for (const G of shown) {
@@ -443,7 +459,7 @@ function render() {
     }
     ctx.fillStyle = css("--floor"); ctx.font = "bold 12px system-ui, sans-serif";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(G.id, X(bx), Y(by) - 0.5);
+    ctx.fillText(G.mark, X(bx), Y(by) - 0.5);
   }
 
   // 수치
@@ -465,13 +481,12 @@ function render() {
 }
 
 // 최고 개체가 지금 이 순간 계산하는 과정: 센서 -> 은닉 -> 출력
-const SENSOR_NAMES = { A: ["왼쪽", "좌앞", "앞", "우앞", "오른쪽"], B: ["위", "아래", "왼쪽", "오른쪽"] };
-const OUT_NAMES = { A: ["왼쪽 바퀴", "오른쪽 바퀴"], B: ["위", "아래", "왼쪽", "오른쪽"] };
+const SENSOR_NAMES = { rel: ["왼쪽", "좌앞", "앞", "우앞", "오른쪽"], abs: ["위", "아래", "왼쪽", "오른쪽"] };
+const OUT_NAMES = { wheels: ["왼쪽 바퀴", "오른쪽 바퀴"], dir4: ["위", "아래", "왼쪽", "오른쪽"] };
 function renderNet(G) {
-  const wrap = document.getElementById("nnWrap" + G.id);
-  wrap.hidden = !document.getElementById(G.show).checked;
-  if (wrap.hidden) return;
-  const cv = document.getElementById("nn" + G.id), ctx = cv.getContext("2d");
+  document.getElementById("nnTitle").textContent = G.name;
+  document.getElementById("nnSwatch").style.background = `var(${G.cBest})`;
+  const cv = document.getElementById("nn"), ctx = cv.getContext("2d");
   const best = G.runs[0], [x, y, th] = at(best.path, t);
   const cm = sense(maze, x, y, th, G), s = cm.map(v => v / CFG.SENSOR_MAX);
   const net = decode(G.pop[best.i], G.nIn, G.nOut);
@@ -507,13 +522,13 @@ function renderNet(G) {
   for (let i = 0; i < G.nIn; i++) {
     node(col.i, yi[i], s[i], css(G.cBest), 11);
     ctx.fillStyle = css("--fg"); ctx.textAlign = "right";
-    ctx.fillText(`${SENSOR_NAMES[G.id][i]} ${cm[i].toFixed(0)}cm`, col.i - 17, yi[i]);
+    ctx.fillText(`${SENSOR_NAMES[G.sensorSet][i]} ${cm[i].toFixed(0)}cm`, col.i - 17, yi[i]);
   }
   for (let j = 0; j < H; j++) node(col.h, yh[j], h[j], css(h[j] >= 0 ? "--pos" : "--neg"), 15, h[j].toFixed(1));
   for (let o = 0; o < G.nOut; o++) {
     node(col.o, yo[o], out[o], css(out[o] >= 0 ? "--pos" : "--neg"), 11);
     ctx.fillStyle = css("--fg"); ctx.textAlign = "left";
-    ctx.fillText(`${OUT_NAMES[G.id][o]} ${sign(out[o])}`, col.o + 17, yo[o]);
+    ctx.fillText(`${OUT_NAMES[G.move][o]} ${sign(out[o])}`, col.o + 17, yo[o]);
   }
 
   let txt;
@@ -524,9 +539,9 @@ function renderNet(G) {
   } else {
     let b = 0;
     for (let o = 1; o < 4; o++) if (out[o] > out[b]) b = o;
-    txt = `선택한 이동 방향: ${OUT_NAMES.B[b]}  (가장 큰 출력)`;
+    txt = `선택한 이동 방향: ${OUT_NAMES.dir4[b]}  (가장 큰 출력)`;
   }
-  document.getElementById("nnText" + G.id).textContent = txt;
+  document.getElementById("nnText").textContent = txt;
 }
 
 // 세대별 최고 적합도 꺾은선 (세대가 끝난 값만 보여 준다)
@@ -567,15 +582,15 @@ document.getElementById("start").onclick = () => { running = true; };
 document.getElementById("pause").onclick = () => { running = false; };
 document.getElementById("reset").onclick = init;
 document.getElementById("seed").onchange = init;
-GROUPS.forEach(G => { document.getElementById(G.show).onchange = render; });
+presetEl.onchange = init;                      // 방식을 바꾸면 처음부터 다시 시작 (같은 시드의 같은 미로)
 document.getElementById("export").onclick = () => {
   const data = {
     description: "센서 -> 은닉(tanh) -> 출력(tanh). w1[i*hidden+j], w2[j*outputs+o] 순서. 거리는 SENSOR_MAX로 나눈 0~1 값. " +
-      "A 출력=[왼쪽 바퀴, 오른쪽 바퀴], B 출력=[위, 아래, 왼쪽, 오른쪽] 중 최댓값 방향으로 이동",
+      "move=wheels 이면 출력=[왼쪽 바퀴, 오른쪽 바퀴], move=dir4 이면 출력=[위, 아래, 왼쪽, 오른쪽] 중 최댓값 방향으로 이동",
     sensor_max_cm: CFG.SENSOR_MAX, hidden: CFG.HIDDEN,
     speed_max_cm_s: CFG.V_MAX, wheel_base_cm: CFG.WHEEL_BASE, generation: gen,
     groups: GROUPS.map(G => ({
-      id: G.id, name: G.name, sensors_deg: G.angles.map(a => Math.round(a * 180 / Math.PI)),
+      preset: G.key, id: G.id, name: G.name, sensors_deg: G.angles.map(a => Math.round(a * 180 / Math.PI)),
       outputs: G.nOut, move: G.move,
       sensors_rotate_with_robot: G.relative, fitness_cm: Number(G.runs[0].f.toFixed(2)),
       genome: G.pop[G.runs[0].i].map(v => Number(v.toFixed(5))),
