@@ -378,11 +378,11 @@ const finalDist = (res, maze) => {
 let maze, gen, t, acc, holdLeft, running = false, last = 0;
 const speedEl = document.getElementById("speed");
 const presetEl = document.getElementById("preset");
-presetEl.value = "s8";                         // 처음 열면 가장 최근(누적) 방식이 선택되어 슬라이더가 모두 보인다
 const bumpEl = document.getElementById("bump");
 const lenEl = document.getElementById("len");
 const exploreEl = document.getElementById("explore");
 presetEl.innerHTML = PRESETS.map(p => `<option value="${p.key}">${p.label}</option>`).join("");
+presetEl.value = "s8";                         // 처음 열면 가장 최근(누적) 방식이 선택되어 슬라이더가 모두 보인다
 
 function init() {
   running = false;
