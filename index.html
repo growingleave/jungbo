@@ -164,6 +164,10 @@ const PRESETS = [
     parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 도착한 개체를 항상 위에 정렬. 처음 난수 유전자는 A와 같음." },
     sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
     angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
+  { key: "s10", id: "A-새길", stage: "단계 10", label: "A-새길 · 단계 10: 단계 9 + 새로운 길에 목표 거리와 상관없이 보상", tunable: true, tunableLen: true, explore: true, revisit: true, phase: true, arrivalFirst: true, noProx: true, bumpPenalty: 0.2, lenWeight: 0.1,
+    parts: { 개체: "A와 같음 (로봇 기준 5센서 + 두 바퀴).", 평가: "", 진화: PART_EVOL + " 도착한 개체를 항상 위에 정렬. 처음 난수 유전자는 A와 같음." },
+    sensorSet: "rel", relative: true, move: "wheels", nOut: 2,
+    angles: [-90, -45, 0, 45, 90].map(rad), rngOffset: 0, cDot: "--a", cBest: "--a-best" },
   { key: "s3b", id: "B", stage: "단계 3-2", label: "B · 단계 3-2: 상하좌우 4센서 + 4방향 이동",
     parts: { 개체: "거리 센서 4개(위, 아래, 왼쪽, 오른쪽)가 화면 기준으로 고정. 방향(헤딩)이 없고, 출력 4개 중 최댓값 방향으로 30cm/s 이동.", 평가: PART_EVAL, 진화: PART_EVOL },
     sensorSet: "abs", relative: false, move: "dir4", nOut: 4,
@@ -181,6 +185,7 @@ function makeGroup(P) {                       // 선택한 방식으로 한 무�
   G.exploreW = 0; G.stag = 0;                                                // 현재 가중치, 정체 세대 수
   G.revisitMax = P.revisit ? Number(revisitEl.value) : 0;                    // 재방문 감점 (점수/번), 도착이 나온 뒤 적용
   G.phase = !!P.phase; G.arrivalFirst = !!P.arrivalFirst; G.arrived = false;  // 단계 전환, 도착 개체 우선 정렬, 도착이 나왔는지
+  G.noProx = !!P.noProx;                                                      // 탐험 보상에서 목표와의 가까움 조건을 뺀다
   G.mark = P.id.slice(0, 1);
   G.nIn = G.angles.length;
   G.geneLen = G.nIn * CFG.HIDDEN + CFG.HIDDEN + CFG.HIDDEN * G.nOut + G.nOut;
@@ -393,7 +398,7 @@ const lenEl = document.getElementById("len");
 const exploreEl = document.getElementById("explore");
 const revisitEl = document.getElementById("revisit");
 presetEl.innerHTML = PRESETS.map(p => `<option value="${p.key}">${p.label}</option>`).join("");
-presetEl.value = "s9";                        // 처음 열면 가장 최근(누적) 방식이 선택되어 슬라이더가 모두 보인다
+presetEl.value = "s10";                       // 처음 열면 가장 최근(누적) 방식이 선택되어 슬라이더가 모두 보인다
 
 function init() {
   running = false;
@@ -408,7 +413,10 @@ function init() {
     G.hist = [];
   });
   const parts = { ...P.parts };
-  if (P.phase) parts.평가 = partEvalPhase(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight, GROUPS[0].exploreMax, GROUPS[0].revisitMax);
+  if (P.phase) {
+    parts.평가 = partEvalPhase(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight, GROUPS[0].exploreMax, GROUPS[0].revisitMax);
+    if (P.noProx) parts.평가 = parts.평가.replace("탐험 보상(가중치는", "새로움 보상(목표와의 거리와 상관없이 남들이 안 간 칸일수록 큼, 가중치는");
+  }
   else if (P.tunable && P.tunableLen && P.explore) parts.평가 = partEvalAll(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight, GROUPS[0].exploreMax);
   else if (P.tunable && P.tunableLen) parts.평가 = partEvalBoth(GROUPS[0].bumpPenalty, GROUPS[0].lenWeight);
   else if (P.tunable) parts.평가 = partEvalBump(GROUPS[0].bumpPenalty);
@@ -484,7 +492,7 @@ function addExploreBonus(G) {
   for (const s of sets) for (const c of s) count.set(c, (count.get(c) || 0) + 1);
   G.runs.forEach((r, k) => {
     let nov = 0;
-    for (const c of sets[k]) nov += maze.prox[c] / count.get(c);
+    for (const c of sets[k]) nov += (G.noProx ? 1 : maze.prox[c]) / count.get(c);   // noProx: 목표와의 거리와 상관없이 새로움만 본다
     r.nov = nov;
     r.bonus = r.solved ? 0 : w * nov;
     r.f += r.bonus;
