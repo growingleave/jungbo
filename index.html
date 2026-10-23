@@ -64,6 +64,7 @@
   <p class="sub">알고리즘 방식을 골라 한 번에 하나씩 진화시킵니다. 같은 시드면 같은 미로와 같은 출발 상태라서 방식끼리 비교할 수 있습니다. 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 들어가면 성공입니다.</p>
   <canvas id="cv" width="600" height="600" aria-label="미로와 로봇들의 실시간 이동"></canvas>
   <div class="preset">
+    <label for="profile" class="ctl">미로·로봇 <select id="profile"></select></label>
     <label for="preset" class="ctl">방식 <select id="preset"></select></label>
     <dl class="parts" id="presetParts"></dl>
   </div>
@@ -421,9 +422,14 @@ const revisitEl = document.getElementById("revisit");
 const capEl = document.getElementById("cap");
 presetEl.innerHTML = PRESETS.map(p => `<option value="${p.key}">${p.label}</option>`).join("");
 presetEl.value = "s12";                     // 처음 열면 가장 최근(누적) 방식이 선택되어 슬라이더가 모두 보인다
+const profileEl = document.getElementById("profile");
+profileEl.innerHTML = Object.keys(PROFILES).map(k => `<option value="${k}">${PROFILES[k].label}</option>`).join("");
+profileEl.value = "research";               // 연구용이 기본값이라 지금까지의 결과는 그대로 재현된다
 
 function init() {
   running = false;
+  CFG = { ...PROFILES[profileEl.value] };
+  STEPS = Math.round(CFG.TIME_LIMIT / CFG.DT);
   const seed = Number(document.getElementById("seed").value);
   maze = makeMaze(CFG.N, makeRng(seed));
   const P = PRESETS.find(p => p.key === presetEl.value) || PRESETS[0];
@@ -779,11 +785,13 @@ revisitEl.onchange = init;                    // 재방문 감점을 바꾸면 �
 exploreEl.onchange = init;                    // 탐험 보상 최대값을 바꾸면 처음부터 다시 시작
 lenEl.onchange = init;                        // 이동 거리 가중치를 바꾸면 처음부터 다시 시작
 bumpEl.onchange = init;                      // 감점 크기를 바꾸면 처음부터 다시 시작
+profileEl.onchange = init;                   // 미로·로봇 설정을 바꾸면 처음부터 다시 시작
 presetEl.onchange = init;                    // 방식을 바꾸면 처음부터 다시 시작 (같은 시드의 같은 미로)
 document.getElementById("export").onclick = () => {
   const data = {
     description: "센서 -> 은닉(tanh) -> 출력(tanh). w1[i*hidden+j], w2[j*outputs+o] 순서. 거리는 SENSOR_MAX로 나눈 0~1 값. " +
       "move=wheels 이면 출력=[왼쪽 바퀴, 오른쪽 바퀴], move=dir4 이면 출력=[위, 아래, 왼쪽, 오른쪽] 중 최댓값 방향으로 이동",
+    profile: profileEl.value, maze_n: CFG.N, cell_cm: CFG.CELL, robot_radius_cm: CFG.ROBOT_R,
     sensor_max_cm: CFG.SENSOR_MAX, hidden: CFG.HIDDEN,
     speed_max_cm_s: CFG.V_MAX, wheel_base_cm: CFG.WHEEL_BASE, generation: gen,
     groups: GROUPS.map(G => ({
