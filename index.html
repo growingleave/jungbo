@@ -108,18 +108,25 @@
 
 <script>
 // ================= 설정 (실제 로봇에 맞게 여기만 바꾸면 된다) =================
-const CFG = {
-  N: 10,                 // 미로 크기 (N x N 칸)
-  CELL: 20,              // 한 칸 크기 cm (= 복도 폭)
-  ROBOT_R: 4,            // 로봇 반지름 cm (지름 8cm)
-  WHEEL_BASE: 8,         // 두 바퀴 사이 거리 cm
-  V_MAX: 30,             // 바퀴 최대 속도 cm/s
-  DT: 0.05,              // 제어 주기 s (20Hz)
-  TIME_LIMIT: 40,        // 한 세대에서 로봇이 움직이는 시간 s
-  SENSOR_MAX: 40,        // 센서가 잴 수 있는 최대 거리 cm
-  HIDDEN: 6, POP: 100,
+// 미로와 로봇 크기 설정은 두 가지를 둔다. 연구용(research)은 지금까지의 모든 실험에 쓴 값이므로 고치지 않는다.
+// 현실용(real)은 소형 원형 실전 기체와 그 시험 미로에 맞춘 값이다(부품이 정해지면 실측값으로 고친다).
+const PROFILES = {
+  research: { label: "연구용: 10×10칸, 칸 20cm, 로봇 지름 8cm",
+    N: 10,               // 미로 크기 (N x N 칸)
+    CELL: 20,            // 한 칸 크기 cm (= 복도 폭)
+    ROBOT_R: 4,          // 로봇 반지름 cm (지름 8cm)
+    WHEEL_BASE: 8,       // 두 바퀴 사이 거리 cm
+    V_MAX: 30,           // 바퀴 최대 속도 cm/s
+    DT: 0.05,            // 제어 주기 s (20Hz)
+    TIME_LIMIT: 40,      // 한 세대에서 로봇이 움직이는 시간 s
+    SENSOR_MAX: 40,      // 센서가 잴 수 있는 최대 거리 cm
+    HIDDEN: 6, POP: 100 },
+  real: { label: "현실용(소형 실전 기체): 6×6칸, 칸 25cm, 로봇 지름 11cm",
+    N: 6, CELL: 25, ROBOT_R: 5.5, WHEEL_BASE: 10, V_MAX: 25, DT: 0.05, TIME_LIMIT: 40, SENSOR_MAX: 40,
+    HIDDEN: 6, POP: 100 },
 };
-const STEPS = Math.round(CFG.TIME_LIMIT / CFG.DT);
+let CFG = { ...PROFILES.research };
+let STEPS = Math.round(CFG.TIME_LIMIT / CFG.DT);
 const rad = d => d * Math.PI / 180;
 
 // ================= 방식(프리셋) 목록 =================
