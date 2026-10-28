@@ -8,7 +8,9 @@ const W = Number(wi), NW = Number(nw), GENS = Number(gens);
 const KS = [30, 10, 3, 1], REPS = 6;
 const tasks = [];
 for (let r = 0; r < REPS; r++) for (const K of KS) tasks.push({ K, r });
-const mine = tasks.filter((t, i) => (i + t.r) % NW === W);
+// 중간에 끊겨도 이어서 하도록, 이미 끝난 (K, r)은 건너뛴다. 오래 걸리는 K부터 번갈아 나눈다.
+const done = new Set(fs.readdirSync('.').filter(f => /^results_A_w\d+\.jsonl$/.test(f)).flatMap(f => fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map(l => { const o = JSON.parse(l); return o.K + '_' + o.r; })));
+const mine = tasks.filter(t => !done.has(t.K + '_' + t.r)).sort((a, b) => b.K - a.K || a.r - b.r).filter((_, i) => i % NW === W);
 (async () => {
   const b = await chromium.launch(); const pg = await b.newPage();
   await pg.goto('file:///home/user/jungbo/index.html');

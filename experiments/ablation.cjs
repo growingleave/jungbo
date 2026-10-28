@@ -7,7 +7,8 @@ const W = Number(wi), NW = Number(nw), GENS = Number(gens);
 const METHODS = ['s2', 's4', 's5', 's6', 's8', 's9', 's10', 's11', 's12'], MAZES = [26, 1, 2, 3], REPS = 8;
 const tasks = [];
 for (let r = 0; r < REPS; r++) for (const mz of MAZES) for (const m of METHODS) tasks.push({ m, mz, r });
-const mine = tasks.filter((_, i) => i % NW === W);
+const done = new Set(fs.readdirSync('.').filter(f => /^results_B_w\d+\.jsonl$/.test(f)).flatMap(f => fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map(l => { const o = JSON.parse(l); return o.m + '_' + o.mz + '_' + o.r; })));
+const mine = tasks.filter(t => !done.has(t.m + '_' + t.mz + '_' + t.r)).filter((_, i) => i % NW === W);
 (async () => {
   const b = await chromium.launch(); const pg = await b.newPage();
   await pg.goto('file:///home/user/jungbo/index.html');

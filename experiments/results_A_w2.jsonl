@@ -1,0 +1,1 @@
+{"K":3,"r":0,"trainSeeds":[3502,1115,2960],"trainOk":3,"testOk":5,"testShortOk":3,"testShortN":31,"curve":[{"g":0,"trainOk":0,"testOk":0},{"g":25,"trainOk":2,"testOk":5},{"g":50,"trainOk":3,"testOk":11},{"g":75,"trainOk":3,"testOk":7},{"g":100,"trainOk":3,"testOk":5},{"g":125,"trainOk":3,"testOk":9},{"g":150,"trainOk":3,"testOk":5}],"sec":141}
