@@ -1,0 +1,10 @@
+{
+  "_설명": "부품을 재서 이 값을 바꾸고 make_parts.cjs를 다시 실행하면 STL이 새로 만들어집니다. 단위 mm.",
+  "plate": { "radius": 55, "thickness": 2.0, "flatX": 45, "standoffHoles": [[-32, -14], [32, -14], [-40, 24], [40, 24]], "holeDia": 3.4 },
+  "sensor": { "angles": [-90, -45, 0, 45, 90], "boardWidth": 25.0, "boardThickness": 1.6, "frontRadius": 52.0, "holderCenterRadius": 46.0, "holderScrewU": 13.0 },
+  "holder": { "baseHalfU": 17, "baseV0": -5, "baseV1": 9, "baseThickness": 2.0, "wallHeight": 3.5, "wallThickness": 1.7, "slotClearance": 0.8, "pocketClearance": 2.0 },
+  "motor": { "centerX": 33, "bodyWidth": 12, "length": 27, "zipSlotDX": 8, "zipSlotDY": 9.5 },
+  "caster": { "centerY": 45 },
+  "battery": { "zipSlotX": 33.5, "zipSlotY": 22 },
+  "standoff": { "bodyDia": 7, "bodyHeight": 30, "pegDia": 3.0, "pegLength": 2.0 }
+}
