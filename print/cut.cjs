@@ -62,7 +62,7 @@ for (let k = 0; k < 5; k++) {
 }
 p3 += T(8, 172, '받침 사용법', 4, 'start', 'bold');
 ['1. 5장을 잘라 파란 점선에서 직각(L자)으로 접습니다. 크기는 가로 27mm, 바닥 7mm, 세우는 면 8mm(낮게)입니다.', '2. 바닥 쪽을 1쪽 도안의 초록 칸에 풀로 붙입니다. 접힌 선이 굵은 초록 선(센서 기준선)과 일치해야 합니다.', '3. 센서 보드의 아래쪽만 세우는 면 앞에 양면테이프로 붙입니다. 렌즈는 바깥, 핀 줄은 위로 가게 합니다.', '4. 점퍼선은 보드 뒤(안쪽)에서 위쪽 핀 줄에 꽂습니다. 받침이 낮아서 핀과 커넥터가 받침에 닿지 않습니다.', '5. 선은 안쪽으로 낮게 모아 테이프로 판에 붙입니다. ±45° 센서는 선이 브레드보드 A 모서리에 닿는지 확인하세요.'].forEach((t, i) => { p3 += T(8, 178 + i * 6, t, 3.3, 'start'); });
-p3 += T(8, 208, '기둥 4개 (위판과 아래판 사이, 높이 30mm)', 4, 'start', 'bold');
-['판지 기둥이 없으면 볼펜 대나 빨대를 30mm로 잘라 쓰세요. 네 개의 길이를 똑같이 맞추는 것이 중요합니다(판이 수평이 됩니다).', '아래판 구멍과 위판 구멍 위에 기둥을 세우고, 구멍 위치마다 풀 또는 뜨거운 글루건으로 고정합니다.', '판 두께가 2mm보다 두꺼우면(예: 3mm) 그만큼 기둥을 조금 더 길게(31mm) 해도 됩니다.'].forEach((t, i) => { p3 += T(8, 215 + i * 6, t, 3.3, 'start'); });
+p3 += T(8, 218, '기둥 4개 (위판과 아래판 사이, 높이 30mm)', 4, 'start', 'bold');
+['판지 기둥이 없으면 볼펜 대나 빨대를 30mm로 잘라 쓰세요. 네 개의 길이를 똑같이 맞추는 것이 중요합니다(판이 수평이 됩니다).', '아래판 구멍과 위판 구멍 위에 기둥을 세우고, 구멍 위치마다 풀 또는 뜨거운 글루건으로 고정합니다.', '판 두께가 2mm보다 두꺼우면(예: 3mm) 그만큼 기둥을 조금 더 길게(31mm) 해도 됩니다.'].forEach((t, i) => { p3 += T(8, 225 + i * 6, t, 3.3, 'start'); });
 const page = body => `<div class="pg"><svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="297mm" viewBox="0 0 210 297" font-family="inherit">${body}</svg></div>`;
 fs.writeFileSync('cut.html', `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:0}body{margin:0;font-family:'Noto Sans CJK KR','Noto Sans KR',sans-serif}.pg{width:210mm;height:297mm;page-break-after:always;overflow:hidden}</style></head><body>${page(p1)}${page(p2)}${page(p3)}</body></html>`);
