@@ -3,12 +3,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 plt.rcParams['font.family']='WenQuanYi Zen Hei'
 N=4; C=25
-def gen(seed):
-    r=random.Random(seed); vis={(0,0)}; st=[(0,0)]; op=set()
-    while st:
-        x,y=st[-1]; nb=[(x+dx,y+dy) for dx,dy in((1,0),(-1,0),(0,1),(0,-1)) if 0<=x+dx<N and 0<=y+dy<N and (x+dx,y+dy) not in vis]
-        if not nb: st.pop(); continue
-        n=r.choice(nb); vis.add(n); op.add(frozenset([(x,y),n])); st.append(n)
+def gen(seed):                       # 무작위 신장 트리(크루스칼): DFS보다 갈래가 많이 생김
+    r=random.Random(seed); par={(x,y):(x,y) for x in range(N) for y in range(N)}
+    def f(a):
+        while par[a]!=a: par[a]=par[par[a]]; a=par[a]
+        return a
+    E=[((x,y),(x+1,y)) for x in range(N-1) for y in range(N)]+[((x,y),(x,y+1)) for x in range(N) for y in range(N-1)]
+    r.shuffle(E); op=set()
+    for a,b in E:
+        if f(a)!=f(b): par[f(a)]=f(b); op.add(frozenset([a,b]))
     return op
 def solve(op):
     from collections import deque
@@ -23,14 +26,18 @@ def solve(op):
     while c: s.append(c); c=p[c]
     return s[::-1]
 best=None
-for seed in range(2000):
+for seed in range(20000):
     op=gen(seed); s=solve(op)
     deg={}
     for e in op:
         for c in e: deg[c]=deg.get(c,0)+1
     dead=sum(1 for c in deg if deg[c]==1 and c not in((0,0),(N-1,N-1)))
-    if 9<=len(s)<=11 and 3<=dead<=4 and (best is None or dead>best[4]): best=(len(s),seed,op,s,dead)
-L,seed,op,sol,dead=best
+    junc=sum(1 for c in deg if deg[c]+(1 if c in((0,0),(N-1,N-1)) else 0)>=3)
+    if 8<=len(s)<=11 and (best is None or (junc,dead)>best[5]): best=(len(s),seed,op,s,dead,(junc,dead))
+L,seed,op,sol,dead,jd=best
+import json
+json.dump([[list(a) for a in sorted(e)] for e in op],open('experiments/maze_real_edges.json','w'))
+print('갈림칸',jd[0])
 print('seed',seed,'해답칸',L,'막다른길',dead)
 fig,ax=plt.subplots(figsize=(8,8.4))
 ax.add_patch(plt.Rectangle((0,0),N*C,N*C,fc='#f4f1e6',ec='none'))
@@ -56,6 +63,6 @@ ax.text(116,104,'출구(도착)',ha='center',color='#080',fontsize=13)
 ax.annotate('',xy=(0,-8),xytext=(25,-8),arrowprops=dict(arrowstyle='<->')); ax.text(12.5,-15,'길 폭 25cm',ha='center',fontsize=11)
 ax.text(50,-27,f'전체 100×100cm  /  벽 높이 10cm 이상  /  분홍 점선 = 정답 길',ha='center',fontsize=11)
 ax.set_xlim(-40,135); ax.set_ylim(-32,110); ax.set_aspect('equal'); ax.axis('off')
-ax.set_title('4×4 미로 (막다른 길 %d개)'%dead,fontsize=15)
+ax.set_title('4×4 미로 (갈림길 %d곳, 막다른 길 %d개)'%(jd[0],dead),fontsize=15)
 print('벽 총길이 cm',wl*C,'개수',wl)
 fig.savefig('maze_real.png',dpi=130,bbox_inches='tight')
