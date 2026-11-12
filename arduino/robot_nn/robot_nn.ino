@@ -13,8 +13,9 @@ const bool LEFT_IS_A   = true;    // true: 모터 A가 왼쪽, B가 오른쪽.  
 const bool INVERT_LEFT  = false;  // 왼쪽 바퀴가 뒤로 돌면 true
 const bool INVERT_RIGHT = false;  // 오른쪽 바퀴가 뒤로 돌면 true
 
-const int MAX_PWM = 255;          // 바퀴 최대 힘(0~255). 너무 빠르면 줄인다 (예: 200)
+const int MAX_PWM = 200;          // 바퀴 최대 힘(0~255). 벽에 세게 부딪히면 줄이고, 너무 느리면 올린다
 const int MIN_PWM = 80;           // 바퀴가 겨우 도는 최소 힘. 약한 명령에서 안 돌면 올리고, 튀면 내린다
+const int  STUCK_MM   = 40;       // 0.5초 동안 센서 값이 이 합계(mm)보다 적게 변하면 "안 움직인다"로 본다
 const float SENSOR_R_CM = 5.2;    // 센서 앞면에서 로봇 중심까지 거리(cm). 실제로 재서 맞춘다 (학습 때 5.2 가정)
 
 // 앞 센서(파손) 보정
@@ -88,6 +89,15 @@ void drive(float left, float right) {                  // -1 ~ 1
   else           { motor(AIN1, AIN2, PWMA, r); motor(BIN1, BIN2, PWMB, l); }
 }
 
+// ===== 끼임 탈출: 바퀴는 돌리는데 센서 값이 1.5초 동안 거의 안 바뀌면 뒤로 빼고 열린 쪽으로 돈다 =====
+void recover(const int *mm) {
+  drive(-0.8, -0.8); delay(450);                       // 뒤로
+  if (mm[0] + mm[1] > mm[3] + mm[4]) drive(-0.7, 0.7); // 왼쪽이 더 열려 있으면 왼쪽으로 제자리 회전
+  else                               drive(0.7, -0.7); // 아니면 오른쪽으로
+  delay(380);
+  drive(0, 0); delay(60);
+}
+
 void setup() {
   Serial.begin(115200);
   Wire.begin();
@@ -121,6 +131,18 @@ void loop() {
     in[i] = cm / 40.0;
   }
   think(in, out);
+
+  // 끼임 검사: 10번(약 0.5초)마다 센서 값이 얼마나 변했는지 본다
+  static int ref[5] = {0, 0, 0, 0, 0}, cnt = 0, stuck = 0;
+  if (++cnt >= 10) {
+    int diff = 0;
+    for (int i = 0; i < 5; i++) { diff += abs(mm[i] - ref[i]); ref[i] = mm[i]; }
+    cnt = 0;
+    float spd = (fabs(out[0]) + fabs(out[1])) / 2;     // 바퀴에 준 힘
+    stuck = (diff < STUCK_MM && spd > 0.25) ? stuck + 1 : 0;
+  }
+  if (stuck >= 3) { recover(mm); stuck = 0; return; }  // 1.5초 연속이면 탈출 동작
+
   drive(out[0], out[1]);
 
   Serial.print("L90:"); Serial.print(mm[0]);
