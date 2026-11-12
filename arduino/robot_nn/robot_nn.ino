@@ -14,6 +14,7 @@ const bool INVERT_LEFT  = false;  // 왼쪽 바퀴가 뒤로 돌면 true
 const bool INVERT_RIGHT = false;  // 오른쪽 바퀴가 뒤로 돌면 true
 
 const int MAX_PWM = 255;          // 바퀴 최대 힘(0~255). 너무 빠르면 줄인다 (예: 200)
+const int MIN_PWM = 80;           // 바퀴가 겨우 도는 최소 힘. 약한 명령에서 안 돌면 올리고, 튀면 내린다
 const float SENSOR_R_CM = 5.2;    // 센서 앞면에서 로봇 중심까지 거리(cm). 실제로 재서 맞춘다 (학습 때 5.2 가정)
 
 // 앞 센서(파손) 보정
@@ -73,8 +74,14 @@ void motor(int in1, int in2, int pwm, int speed) {     // speed: -255 ~ 255
   analogWrite(pwm, abs(speed));
 }
 
+int pwmOf(float v) {                                   // 약한 명령도 MIN_PWM부터 시작하도록 펴 준다
+  if (fabs(v) < 0.05) return 0;
+  int p = MIN_PWM + (int)((MAX_PWM - MIN_PWM) * fabs(v));
+  return v > 0 ? p : -p;
+}
+
 void drive(float left, float right) {                  // -1 ~ 1
-  int l = (int)(left * MAX_PWM), r = (int)(right * MAX_PWM);
+  int l = pwmOf(left), r = pwmOf(right);
   if (INVERT_LEFT) l = -l;
   if (INVERT_RIGHT) r = -r;
   if (LEFT_IS_A) { motor(AIN1, AIN2, PWMA, l); motor(BIN1, BIN2, PWMB, r); }
