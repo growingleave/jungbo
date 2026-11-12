@@ -61,7 +61,7 @@
 <body>
 <main>
   <h1>유전 로보틱스 미로 · 방식별 실험</h1>
-  <p class="sub">알고리즘 방식을 골라 한 번에 하나씩 진화시킵니다. 같은 시드면 같은 미로와 같은 출발 상태라서 방식끼리 비교할 수 있습니다. 오른쪽 위(초록)에서 출발해 왼쪽 아래(분홍)에 들어가면 성공입니다.</p>
+  <p class="sub">알고리즘 방식을 골라 한 번에 하나씩 진화시킵니다. 같은 시드면 같은 출발 상태라서 방식끼리 비교할 수 있습니다(연구용은 시드마다 미로가 다르고, 현실용은 항상 같은 미로 하나입니다). 초록 칸에서 출발해 분홍 칸에 들어가면 성공입니다(연구용은 오른쪽 위→왼쪽 아래, 현실용은 왼쪽 위→오른쪽 아래).</p>
   <canvas id="cv" width="600" height="600" aria-label="미로와 로봇들의 실시간 이동"></canvas>
   <div class="preset">
     <label for="profile" class="ctl">미로·로봇 <select id="profile"></select></label>
@@ -122,9 +122,11 @@ const PROFILES = {
     TIME_LIMIT: 40,      // 한 세대에서 로봇이 움직이는 시간 s
     SENSOR_MAX: 40,      // 센서가 잴 수 있는 최대 거리 cm
     HIDDEN: 6, POP: 100 },
-  real: { label: "현실용(소형 실전 기체): 4×4칸, 칸 25cm, 로봇 지름 11cm",
+  real: { label: "현실용(소형 실전 기체): 4×4칸 고정 미로(갈림길 7곳), 칸 25cm, 로봇 지름 11cm",
     N: 4, CELL: 25, ROBOT_R: 5.5, WHEEL_BASE: 10, V_MAX: 25, DT: 0.05, TIME_LIMIT: 40, SENSOR_MAX: 40,
-    HIDDEN: 6, POP: 100 },
+    HIDDEN: 6, POP: 100,
+    // 실제로 만들 미로 하나를 고정한다. 칸 (행,열)의 뚫린 이웃 쌍 15개(벽이 없는 곳). 시드와 상관없이 항상 같은 미로. 출발 왼쪽 위(0,0), 도착 오른쪽 아래(3,3)
+    FIXED: [[[2,1],[3,1]],[[1,0],[2,0]],[[2,0],[2,1]],[[0,0],[0,1]],[[3,2],[3,3]],[[1,0],[1,1]],[[1,2],[2,2]],[[0,2],[1,2]],[[0,0],[1,0]],[[0,3],[1,3]],[[2,3],[3,3]],[[2,1],[2,2]],[[1,2],[1,3]],[[2,0],[3,0]],[[1,3],[2,3]]] },
 };
 let CFG = { ...PROFILES.research };
 let STEPS = Math.round(CFG.TIME_LIMIT / CFG.DT);
@@ -256,6 +258,21 @@ function makeMaze(n, rnd) {
     walls[r][c][d] = 0; walls[r2][c2][OPP[d]] = 0;
   }
   const maze = { n, walls, start: [0, n - 1], goal: [n - 1, 0] };
+  maze.shortest = shortestPath(maze);
+  buildGeometry(maze);
+  return maze;
+}
+
+// 정해진 미로(뚫린 이웃 쌍 목록)로 미로를 만든다. 현실용 고정 미로에 쓴다.
+function makeFixedMaze(n, openPairs) {
+  const walls = Array.from({ length: n }, () => Array.from({ length: n }, () => [1, 1, 1, 1]));
+  for (const [[r1, c1], [r2, c2]] of openPairs) {
+    if (r2 === r1 + 1) { walls[r1][c1][1] = 0; walls[r2][c2][0] = 0; }
+    else if (r2 === r1 - 1) { walls[r1][c1][0] = 0; walls[r2][c2][1] = 0; }
+    else if (c2 === c1 + 1) { walls[r1][c1][3] = 0; walls[r2][c2][2] = 0; }
+    else { walls[r1][c1][2] = 0; walls[r2][c2][3] = 0; }
+  }
+  const maze = { n, walls, start: [0, 0], goal: [n - 1, n - 1] };
   maze.shortest = shortestPath(maze);
   buildGeometry(maze);
   return maze;
@@ -431,7 +448,7 @@ function init() {
   CFG = { ...PROFILES[profileEl.value] };
   STEPS = Math.round(CFG.TIME_LIMIT / CFG.DT);
   const seed = Number(document.getElementById("seed").value);
-  maze = makeMaze(CFG.N, makeRng(seed));
+  maze = CFG.FIXED ? makeFixedMaze(CFG.N, CFG.FIXED) : makeMaze(CFG.N, makeRng(seed));   // 현실용은 고정 미로, 연구용은 시드별 무작위 미로
   const P = PRESETS.find(p => p.key === presetEl.value) || PRESETS[0];
   GROUPS = [makeGroup(P)];
   GROUPS.forEach(G => {
