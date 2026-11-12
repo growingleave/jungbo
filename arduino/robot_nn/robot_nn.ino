@@ -1,4 +1,4 @@
-// 미로 찾기 로봇: 진화시킨 신경망으로 달린다 (좌우반전 4x4 미로(출발 오른쪽 아래), 길 폭 25cm용 가중치, 실기 오차를 넣어 학습한 개체)
+// 미로 찾기 로봇: 진화시킨 신경망으로 달린다 (좌우반전 4x4 미로(출발 오른쪽 아래), 길 폭 25cm, 로봇 반지름 6.5~8cm로 학습한 가중치, 실기 오차를 넣어 학습한 개체)
 // 센서 5개(VL53L0X) -> 신경망 -> 바퀴 2개(TB6612). 한 번 업로드하면 3초 뒤부터 혼자 달린다.
 #include <Wire.h>
 #include <VL53L0X.h>
@@ -14,7 +14,6 @@ const bool INVERT_LEFT  = false;  // 왼쪽 바퀴가 뒤로 돌면 true
 const bool INVERT_RIGHT = false;  // 오른쪽 바퀴가 뒤로 돌면 true
 
 const int MAX_PWM = 255;          // 바퀴 최대 힘(0~255). 너무 빠르면 줄인다 (예: 200)
-const int MIN_PWM = 80;           // 바퀴가 겨우 도는 최소 힘. 약한 명령에서 안 돌면 올리고, 튀면 내린다
 const float SENSOR_R_CM = 5.2;    // 센서 앞면에서 로봇 중심까지 거리(cm). 실제로 재서 맞춘다 (학습 때 5.2 가정)
 
 // 앞 센서(파손) 보정
@@ -29,10 +28,10 @@ VL53L0X sensor[5];
 
 // ===== 신경망 (시뮬레이터와 같은 계산: 센서 5개 -> 은닉 6개(tanh) -> 출력 2개(tanh)) =====
 const int NIN = 5, NH = 6, NOUT = 2;
-const float W1[NIN * NH] = {-0.55823f, -2.43629f, 1.44739f, 0.25559f, -1.01681f, -0.22126f, 1.20122f, 1.79184f, -0.23630f, 0.33466f, -0.71287f, -0.65045f, -0.16068f, 1.98672f, 0.24099f, -1.46742f, -0.09260f, -0.68245f, 0.91219f, 0.52981f, -0.51375f, 1.47310f, 1.62878f, -0.20504f, 2.26023f, -2.02154f, 0.55759f, -1.23228f, 0.34960f, 0.31000f};   // W1[센서*6 + 은닉]
-const float BIAS1[NH]       = {0.73190f, 0.96907f, -0.67903f, -0.08202f, 0.02896f, 0.52990f};
-const float W2[NH * NOUT] = {0.14774f, -1.38210f, 0.67852f, 0.93589f, 0.82124f, 1.65575f, -0.32165f, -0.93754f, 3.31552f, -0.40775f, -0.22072f, -1.91820f};  // W2[은닉*2 + 출력]
-const float BIAS2[NOUT]     = {0.84800f, -0.17311f};
+const float W1[NIN * NH] = {0.97479f, -1.09869f, -0.43861f, 1.71805f, 0.63620f, -0.85606f, -0.25464f, -1.49793f, -0.00662f, 0.24603f, 1.02903f, 0.98438f, -0.55266f, -1.33171f, 2.18895f, -0.46286f, -1.50423f, 0.72727f, 0.79350f, 0.53431f, -1.30260f, -1.13752f, -0.89758f, 0.58003f, -0.99235f, 1.00255f, 1.01417f, -2.31786f, 0.12751f, 1.24406f};   // W1[센서*6 + 은닉]
+const float BIAS1[NH]       = {-0.72086f, 1.30428f, 0.38340f, -0.45185f, 0.08948f, -0.01174f};
+const float W2[NH * NOUT] = {1.04778f, -1.85756f, -1.38664f, -0.25823f, -0.64730f, 0.82129f, -1.68939f, 1.33626f, -3.05798f, 1.16406f, 0.19008f, 0.60104f};  // W2[은닉*2 + 출력]
+const float BIAS2[NOUT]     = {-1.51544f, 0.05351f};
 
 void think(const float *in, float *out) {
   float h[NH];
@@ -74,14 +73,8 @@ void motor(int in1, int in2, int pwm, int speed) {     // speed: -255 ~ 255
   analogWrite(pwm, abs(speed));
 }
 
-int pwmOf(float v) {                                   // 약한 명령도 MIN_PWM부터 시작하도록 펴 준다
-  if (fabs(v) < 0.05) return 0;
-  int p = MIN_PWM + (int)((MAX_PWM - MIN_PWM) * fabs(v));
-  return v > 0 ? p : -p;
-}
-
 void drive(float left, float right) {                  // -1 ~ 1
-  int l = pwmOf(left), r = pwmOf(right);
+  int l = (int)(left * MAX_PWM), r = (int)(right * MAX_PWM);
   if (INVERT_LEFT) l = -l;
   if (INVERT_RIGHT) r = -r;
   if (LEFT_IS_A) { motor(AIN1, AIN2, PWMA, l); motor(BIN1, BIN2, PWMB, r); }
