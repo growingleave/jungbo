@@ -29,19 +29,19 @@ VL53L0X sensor[5];
 // ===== 신경망 (시뮬레이터와 같은 계산: 센서 5개 -> 은닉 6개(tanh) -> 출력 2개(tanh)) =====
 const int NIN = 5, NH = 6, NOUT = 2;
 const float W1[NIN * NH] = {-0.31776f, -0.04845f, -0.87861f, -1.35641f, 2.14725f, -1.95686f, 1.09652f, 1.26073f, -1.98106f, -0.65493f, -3.13951f, -1.06633f, -2.12827f, -1.83321f, -1.26603f, -0.90277f, 1.21936f, -0.23995f, -0.43130f, 1.45001f, 0.28880f, 1.57215f, -0.06286f, 1.31427f, 0.73357f, -0.96863f, 0.66386f, 2.83848f, -2.22252f, -0.47286f};   // W1[센서*6 + 은닉]
-const float B1[NH]       = {0.68370f, 0.44031f, 1.94569f, 0.49445f, 0.97953f, -0.07763f};
+const float BIAS1[NH]       = {0.68370f, 0.44031f, 1.94569f, 0.49445f, 0.97953f, -0.07763f};
 const float W2[NH * NOUT] = {-0.54561f, -2.03499f, -0.70509f, 0.89543f, 0.42249f, -3.83551f, 0.97765f, -0.82402f, 0.53317f, -1.63465f, -0.76741f, 0.55301f};  // W2[은닉*2 + 출력]
-const float B2[NOUT]     = {0.01115f, 0.72850f};
+const float BIAS2[NOUT]     = {0.01115f, 0.72850f};
 
 void think(const float *in, float *out) {
   float h[NH];
   for (int j = 0; j < NH; j++) {
-    float v = B1[j];
+    float v = BIAS1[j];
     for (int i = 0; i < NIN; i++) v += in[i] * W1[i * NH + j];
     h[j] = tanh(v);
   }
   for (int o = 0; o < NOUT; o++) {
-    float v = B2[o];
+    float v = BIAS2[o];
     for (int j = 0; j < NH; j++) v += h[j] * W2[j * NOUT + o];
     out[o] = tanh(v);
   }
