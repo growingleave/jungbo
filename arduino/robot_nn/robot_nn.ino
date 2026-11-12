@@ -13,7 +13,7 @@ const bool LEFT_IS_A   = true;    // true: 모터 A가 왼쪽, B가 오른쪽.  
 const bool INVERT_LEFT  = false;  // 왼쪽 바퀴가 뒤로 돌면 true
 const bool INVERT_RIGHT = false;  // 오른쪽 바퀴가 뒤로 돌면 true
 
-const int MAX_PWM = 200;          // 바퀴 최대 힘(0~255). 벽에 세게 부딪히면 줄이고, 너무 느리면 올린다
+const int MAX_PWM = 150;          // 바퀴 최대 힘(0~255). 벽에 세게 부딪히면 줄이고, 너무 느리면 올린다
 const int MIN_PWM = 80;           // 바퀴가 겨우 도는 최소 힘. 약한 명령에서 안 돌면 올리고, 튀면 내린다
 const int  BACK_MM    = 70;       // 앞 센서가 이 값(mm) 이하면 벽에 막힌 것이니 앞으로 가지 않고 뒤로 뺀다 (앞 센서는 60 아래로 못 내려감)
 const int  BACK45_MM  = 55;       // 왼앞/오른앞 센서가 이 값(mm) 이하면 모서리에 걸린 것이니 역시 뒤로 뺀다
@@ -52,7 +52,8 @@ void think(const float *in, float *out) {
   }
 }
 
-int frontHist[3] = {1200, 1200, 1200};   // 앞 센서는 최근 3번 값의 가운데 값을 쓴다 (튀는 값 제거)
+int frontHist[3] = {1200, 1200, 1200};
+int prevF = 1200, holdF = 0;             // 앞 센서가 가까운 값(<200)에서 갑자기 먼 값(>=1000)으로 튀면 최대 6번(0.3초)은 가까운 값으로 본다   // 앞 센서는 최근 3번 값의 가운데 값을 쓴다 (튀는 값 제거)
 
 int median3(int a, int b, int c) {
   if ((a >= b && a <= c) || (a <= b && a >= c)) return a;
@@ -64,6 +65,8 @@ int readMM(int i) {
   int d = sensor[i].readRangeContinuousMillimeters();
   if (sensor[i].timeoutOccurred() || d > 1200) d = 1200;
   if (i == FRONT) {
+    if (d >= 1000 && prevF < 200 && holdF < 6) { d = prevF; holdF++; }   // 너무 가까워서 센서가 값을 못 읽고 튄 경우
+    else { holdF = 0; prevF = d; }
     frontHist[0] = frontHist[1]; frontHist[1] = frontHist[2]; frontHist[2] = d;
     d = median3(frontHist[0], frontHist[1], frontHist[2]) - F_OFFSET_MM;
     if (d < F_MIN_MM) d = F_MIN_MM;
