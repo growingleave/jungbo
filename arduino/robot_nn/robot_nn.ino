@@ -16,7 +16,8 @@ const bool INVERT_RIGHT = false;  // 오른쪽 바퀴가 뒤로 돌면 true
 const int MAX_PWM = 200;          // 바퀴 최대 힘(0~255). 벽에 세게 부딪히면 줄이고, 너무 느리면 올린다
 const int MIN_PWM = 80;           // 바퀴가 겨우 도는 최소 힘. 약한 명령에서 안 돌면 올리고, 튀면 내린다
 const int  BACK_MM    = 70;       // 앞 센서가 이 값(mm) 이하면 벽에 막힌 것이니 앞으로 가지 않고 뒤로 뺀다 (앞 센서는 60 아래로 못 내려감)
-const int  BACK_MS    = 350;      // 뒤로 가는 시간(ms)
+const int  BACK45_MM  = 55;       // 왼앞/오른앞 센서가 이 값(mm) 이하면 모서리에 걸린 것이니 역시 뒤로 뺀다
+const int  BACK_MS    = 400;      // 뒤로 가는 시간(ms)
 const int  STUCK_MM   = 40;       // 0.5초 동안 센서 값이 이 합계(mm)보다 적게 변하면 "안 움직인다"로 본다
 const float SENSOR_R_CM = 5.2;    // 센서 앞면에서 로봇 중심까지 거리(cm). 실제로 재서 맞춘다 (학습 때 5.2 가정)
 
@@ -100,10 +101,12 @@ void recover(const int *mm) {
   drive(0, 0); delay(60);
 }
 
-// ===== 벽에 막히면 뒤로: 앞으로 밀지 않고 뒤로 빼면서 열린 쪽으로 조금 돈다 =====
+// ===== 벽에 막히면 뒤로: 앞으로 밀지 않고 뒤로 빼면서 코를 열린 쪽으로 돌린다 =====
 void backOff(const int *mm) {
-  bool leftOpen = (mm[0] + mm[1]) > (mm[3] + mm[4]);
-  if (leftOpen) drive(-0.9, -0.5); else drive(-0.5, -0.9);   // 뒤로 가면서 열린 쪽으로 꼬리를 돌린다
+  bool noseLeft;
+  if (mm[FRONT] <= BACK_MM) noseLeft = (mm[0] + mm[1]) > (mm[3] + mm[4]);   // 앞이 막히면 더 열린 쪽으로
+  else                      noseLeft = (mm[1] > mm[3]);                       // 모서리에 걸리면 먼 쪽(왼앞이 더 멀면 왼쪽)으로
+  if (noseLeft) drive(-0.9, -0.5); else drive(-0.5, -0.9);                   // 뒤로 가면서 코를 돌린다
   delay(BACK_MS);
   drive(0, 0); delay(40);
 }
@@ -140,7 +143,7 @@ void loop() {
     if (cm > 40.0) cm = 40.0;                          // 시뮬레이터와 같이 40cm에서 자름
     in[i] = cm / 40.0;
   }
-  if (mm[FRONT] <= BACK_MM) {                          // 앞이 막혔다: 신경망 말고 뒤로
+  if (mm[FRONT] <= BACK_MM || mm[1] <= BACK45_MM || mm[3] <= BACK45_MM) {   // 앞이 막혔거나 모서리에 걸렸다: 신경망 말고 뒤로
     backOff(mm);
     return;
   }
